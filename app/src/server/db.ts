@@ -170,6 +170,23 @@ class JsonDb {
     });
   }
 
+  async updateJourneyStep(input: { projectId: string; journeyStepId: string; name: string }): Promise<JourneyStep> {
+    const name = input.name.trim();
+    if (!name) throw new Error("Journey step name is required");
+
+    return this.mutate((data) => {
+      const project = data.projects.find((p) => p.id === input.projectId);
+      if (!project) throw new Error("Project not found");
+
+      const step = data.journeySteps.find((s) => s.id === input.journeyStepId && s.projectId === input.projectId);
+      if (!step) throw new Error("Journey step not found");
+
+      step.name = name;
+      project.updatedAt = nowIso();
+      return step;
+    });
+  }
+
   async addUIArea(projectId: string, name: string): Promise<UIArea> {
     const areaName = name.trim();
     if (!areaName) throw new Error("UI area name is required");
@@ -183,6 +200,23 @@ class JsonDb {
 
       const area: UIArea = { id: id(), projectId, name: areaName, order };
       data.uiAreas.push(area);
+      project.updatedAt = nowIso();
+      return area;
+    });
+  }
+
+  async updateUIArea(input: { projectId: string; uiAreaId: string; name: string }): Promise<UIArea> {
+    const name = input.name.trim();
+    if (!name) throw new Error("UI area name is required");
+
+    return this.mutate((data) => {
+      const project = data.projects.find((p) => p.id === input.projectId);
+      if (!project) throw new Error("Project not found");
+
+      const area = data.uiAreas.find((a) => a.id === input.uiAreaId && a.projectId === input.projectId);
+      if (!area) throw new Error("UI area not found");
+
+      area.name = name;
       project.updatedAt = nowIso();
       return area;
     });

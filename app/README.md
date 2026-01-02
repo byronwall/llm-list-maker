@@ -23,6 +23,27 @@ npm run dev
 npm run dev -- --open
 ```
 
+## AI suggestions (Vercel AI SDK)
+
+This project includes basic AI-powered “Wand” buttons on the project page to generate:
+
+- Journey steps (rows)
+- UI areas (columns)
+- Features (cards)
+
+### Setup
+
+1. Install deps (from repo root):
+
+```bash
+pnpm -C app install
+```
+
+2. Create `app/.env` (see `app/.env.example`) and set:
+
+- `OPENAI_API_KEY`
+- `AI_MODEL` (optional, defaults to `gpt-4o-mini`)
+
 ## Building
 
 Solid apps are built with _presets_, which optimise your project for deployment to different environments.

@@ -1,5 +1,5 @@
 import { createAsync, useAction, useParams } from "@solidjs/router";
-import { For, Show } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
 import { css } from "styled-system/css";
 import { Box, Container, Grid, HStack, Stack, VStack } from "styled-system/jsx";
 
@@ -10,7 +10,16 @@ import { Textarea } from "~/components/ui/textarea";
 import { Link } from "~/components/ui/link";
 
 import type { Feature, FeatureStatus, Phase } from "~/lib/domain";
-import { addJourneyStep, addUIArea, createFeature, deleteFeature, updateFeature } from "~/server/actions";
+import {
+  addJourneyStep,
+  addUIArea,
+  createFeature,
+  deleteFeature,
+  generateCoreSection,
+  updateFeature,
+  updateJourneyStep,
+  updateUIArea,
+} from "~/server/actions";
 import { getProjectBoard } from "~/server/queries";
 
 const PHASES: Phase[] = ["MVP", "V1", "Later"];
@@ -27,12 +36,19 @@ export default function ProjectRoute() {
   const runCreateFeature = useAction(createFeature);
   const runUpdateFeature = useAction(updateFeature);
   const runDeleteFeature = useAction(deleteFeature);
+  const runUpdateJourneyStep = useAction(updateJourneyStep);
+  const runUpdateUIArea = useAction(updateUIArea);
+  const runGenerateCoreSection = useAction(generateCoreSection);
 
   let newStepEl!: HTMLInputElement;
   let newAreaEl!: HTMLInputElement;
 
   let featureTitleEl!: HTMLInputElement;
   let featureDescEl!: HTMLTextAreaElement;
+
+  const [isGenSteps, setIsGenSteps] = createSignal(false);
+  const [isGenAreas, setIsGenAreas] = createSignal(false);
+  const [isGenFeatures, setIsGenFeatures] = createSignal(false);
 
   const onAddStep = async (e: Event) => {
     e.preventDefault();
@@ -83,6 +99,50 @@ export default function ProjectRoute() {
     window.location.reload();
   };
 
+  const onGenerateSteps = async () => {
+    try {
+      setIsGenSteps(true);
+      await runGenerateCoreSection({ projectId: projectId(), section: "journeySteps" });
+      window.location.reload();
+    } finally {
+      setIsGenSteps(false);
+    }
+  };
+
+  const onGenerateAreas = async () => {
+    try {
+      setIsGenAreas(true);
+      await runGenerateCoreSection({ projectId: projectId(), section: "uiAreas" });
+      window.location.reload();
+    } finally {
+      setIsGenAreas(false);
+    }
+  };
+
+  const onGenerateFeatures = async () => {
+    try {
+      setIsGenFeatures(true);
+      await runGenerateCoreSection({ projectId: projectId(), section: "features" });
+      window.location.reload();
+    } finally {
+      setIsGenFeatures(false);
+    }
+  };
+
+  const onRenameJourneyStep = async (journeyStepId: string, name: string) => {
+    const next = name.trim();
+    if (!next) return;
+    await runUpdateJourneyStep({ projectId: projectId(), journeyStepId, name: next });
+    window.location.reload();
+  };
+
+  const onRenameUIArea = async (uiAreaId: string, name: string) => {
+    const next = name.trim();
+    if (!next) return;
+    await runUpdateUIArea({ projectId: projectId(), uiAreaId, name: next });
+    window.location.reload();
+  };
+
   return (
     <Container py="8" maxW="7xl">
       <VStack alignItems="stretch" gap="6">
@@ -120,10 +180,29 @@ export default function ProjectRoute() {
               <Grid columns={{ base: 1, md: 2 }} gap="4">
                 <Card.Root>
                   <Card.Header>
-                    <Card.Title>Add journey step</Card.Title>
+                    <HStack justify="space-between" align="center">
+                      <Card.Title>Add journey step</Card.Title>
+                      <Button variant="outline" size="xs" onClick={onGenerateSteps} disabled={isGenSteps()}>
+                        {isGenSteps() ? "Generating…" : "Wand"}
+                      </Button>
+                    </HStack>
                     <Card.Description>Rows on the board.</Card.Description>
                   </Card.Header>
                   <Card.Body>
+                    <Show when={b().journeySteps.length > 0}>
+                      <VStack alignItems="stretch" gap="2" class={css({ pb: "3" })}>
+                        <For each={b().journeySteps}>
+                          {(s) => (
+                            <HStack>
+                              <Input
+                                value={s.name}
+                                onBlur={(e) => onRenameJourneyStep(s.id, e.currentTarget.value)}
+                              />
+                            </HStack>
+                          )}
+                        </For>
+                      </VStack>
+                    </Show>
                     <form onSubmit={onAddStep}>
                       <HStack>
                         <Input ref={newStepEl} placeholder="e.g. Checkout" />
@@ -135,10 +214,26 @@ export default function ProjectRoute() {
 
                 <Card.Root>
                   <Card.Header>
-                    <Card.Title>Add UI area</Card.Title>
+                    <HStack justify="space-between" align="center">
+                      <Card.Title>Add UI area</Card.Title>
+                      <Button variant="outline" size="xs" onClick={onGenerateAreas} disabled={isGenAreas()}>
+                        {isGenAreas() ? "Generating…" : "Wand"}
+                      </Button>
+                    </HStack>
                     <Card.Description>Columns on the board.</Card.Description>
                   </Card.Header>
                   <Card.Body>
+                    <Show when={b().uiAreas.length > 0}>
+                      <VStack alignItems="stretch" gap="2" class={css({ pb: "3" })}>
+                        <For each={b().uiAreas}>
+                          {(a) => (
+                            <HStack>
+                              <Input value={a.name} onBlur={(e) => onRenameUIArea(a.id, e.currentTarget.value)} />
+                            </HStack>
+                          )}
+                        </For>
+                      </VStack>
+                    </Show>
                     <form onSubmit={onAddArea}>
                       <HStack>
                         <Input ref={newAreaEl} placeholder="e.g. Billing" />
@@ -151,7 +246,12 @@ export default function ProjectRoute() {
 
               <Card.Root>
                 <Card.Header>
-                  <Card.Title>Create feature</Card.Title>
+                  <HStack justify="space-between" align="center">
+                    <Card.Title>Create feature</Card.Title>
+                    <Button variant="outline" size="xs" onClick={onGenerateFeatures} disabled={isGenFeatures()}>
+                      {isGenFeatures() ? "Generating…" : "Wand"}
+                    </Button>
+                  </HStack>
                   <Card.Description>A basic card you can later move around.</Card.Description>
                 </Card.Header>
                 <Card.Body>
@@ -302,10 +402,12 @@ function FeatureCard(props: {
         gap: "2",
       })}
     >
-      <Box class={css({ fontWeight: "semibold" })}>{f().title}</Box>
-      <Show when={f().description}>
-        <Box class={css({ fontSize: "sm", color: "fg.muted", whiteSpace: "pre-wrap" })}>{f().description}</Box>
-      </Show>
+      <Input value={f().title} onBlur={(e) => props.onUpdate(f().id, { title: e.currentTarget.value })} />
+      <Textarea
+        value={f().description}
+        onBlur={(e) => props.onUpdate(f().id, { description: e.currentTarget.value })}
+        class={css({ minH: "70px" })}
+      />
 
       <Grid columns={2} gap="2" class={css({ pt: "1" })}>
         <label class={css({ display: "grid", gap: "1" })}>
