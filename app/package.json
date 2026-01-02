@@ -25,5 +25,10 @@
     "@pandacss/dev": "^1.7.2",
     "vite-plugin-lucide-preprocess": "^1.4.6",
     "vite-tsconfig-paths": "^6.0.3"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "vinxi@0.5.10": "patches/vinxi@0.5.10.patch"
+    }
   }
 }
