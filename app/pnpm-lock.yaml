@@ -11,6 +11,9 @@ importers:
       '@ark-ui/solid':
         specifier: ^5.30.0
         version: 5.30.0(solid-js@1.9.10)
+      '@solidjs/router':
+        specifier: ^0.15.1
+        version: 0.15.4(solid-js@1.9.10)
       '@solidjs/start':
         specifier: ^1.1.0
         version: 1.2.1(solid-js@1.9.10)(vinxi@0.5.10(db0@0.3.4)(ioredis@5.8.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1))(vite@6.4.1(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1))
@@ -757,6 +760,11 @@ packages:
     resolution: {integrity: sha512-BgoEdqPw48URnI+L5sZIHdF4ua4Las1eWEBBPaoSFs42kkhnHue+rwCBPL2Z9ebOyQ75sUhUfOETdJfmv0D6Kg==}
     peerDependencies:
       solid-js: ^1.6.12
+
+  '@solidjs/router@0.15.4':
+    resolution: {integrity: sha512-WOpgg9a9T638cR+5FGbFi/IV4l2FpmBs1GpIMSPa0Ce9vyJN7Wts+X2PqMf9IYn0zUj2MlSJtm1gp7/HI/n5TQ==}
+    peerDependencies:
+      solid-js: ^1.8.6
 
   '@solidjs/start@1.2.1':
     resolution: {integrity: sha512-O5E7rcCwm2f8GlXKgS2xnU37Ld5vMVXJgo/qR7UI5iR5uFo9V2Ac+SSVNXkM98CeHKHt55h1UjbpxxTANEsHmA==}
@@ -3880,6 +3888,10 @@ snapshots:
   '@sindresorhus/merge-streams@4.0.0': {}
 
   '@solid-primitives/keyed@1.5.2(solid-js@1.9.10)':
+    dependencies:
+      solid-js: 1.9.10
+
+  '@solidjs/router@0.15.4(solid-js@1.9.10)':
     dependencies:
       solid-js: 1.9.10
 
