@@ -33,7 +33,7 @@ const STATUSES: FeatureStatus[] = [
 
 export default function ProjectRoute() {
   const params = useParams();
-  const projectId = () => params.id;
+  const projectId = (): string => params.id!;
 
   const board = createAsync(() => getProjectBoard(projectId()));
   const b = () => board.latest;
@@ -392,6 +392,23 @@ function ScopeBoard(props: {
     ...props.uiAreas,
   ];
 
+  // Hide rows/cols that contain no features to avoid rendering a bunch of empty
+  // grid cells under the last real feature card.
+  const usedRowIds = () => {
+    const set = new Set<string>();
+    for (const f of props.features) set.add(f.journeyStepId ?? "unassigned");
+    return set;
+  };
+  const usedColIds = () => {
+    const set = new Set<string>();
+    for (const f of props.features) set.add(f.uiAreaId ?? "unassigned");
+    return set;
+  };
+  const visibleRows = () =>
+    allRows().filter((r) => r.id === "unassigned" || usedRowIds().has(r.id));
+  const visibleCols = () =>
+    allCols().filter((c) => c.id === "unassigned" || usedColIds().has(c.id));
+
   const featuresForCell = (rowId: string, colId: string) => {
     const journeyStepId = rowId === "unassigned" ? null : rowId;
     const uiAreaId = colId === "unassigned" ? null : colId;
@@ -406,13 +423,13 @@ function ScopeBoard(props: {
         class={css({
           minW: "900px",
           display: "grid",
-          gridTemplateColumns: `220px repeat(${allCols().length}, minmax(240px, 1fr))`,
+          gridTemplateColumns: `220px repeat(${visibleCols().length}, minmax(240px, 1fr))`,
           gap: "2",
           alignItems: "stretch",
         })}
       >
         <Box />
-        <For each={allCols()}>
+        <For each={visibleCols()}>
           {(col) => (
             <Box
               class={css({
@@ -430,7 +447,7 @@ function ScopeBoard(props: {
           )}
         </For>
 
-        <For each={allRows()}>
+        <For each={visibleRows()}>
           {(row) => (
             <>
               <Box
@@ -446,7 +463,7 @@ function ScopeBoard(props: {
               >
                 {row.name}
               </Box>
-              <For each={allCols()}>
+              <For each={visibleCols()}>
                 {(col) => (
                   <Box
                     class={css({
