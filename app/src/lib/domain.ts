@@ -110,3 +110,4 @@ export interface ProjectBoard {
   uiAreas: UIArea[];
   features: Feature[];
 }
+

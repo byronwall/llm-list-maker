@@ -1,5 +1,5 @@
-import { createAsync, useAction, useParams } from "@solidjs/router";
-import { For, Show, createSignal } from "solid-js";
+import { createAsync, revalidate, useAction, useParams } from "@solidjs/router";
+import { For, Show, createEffect, createSignal } from "solid-js";
 import { css } from "styled-system/css";
 import { Box, Container, Grid, HStack, Stack, VStack } from "styled-system/jsx";
 
@@ -23,13 +23,24 @@ import {
 import { getProjectBoard } from "~/server/queries";
 
 const PHASES: Phase[] = ["MVP", "V1", "Later"];
-const STATUSES: FeatureStatus[] = ["proposed", "accepted", "in_progress", "done", "cut"];
+const STATUSES: FeatureStatus[] = [
+  "proposed",
+  "accepted",
+  "in_progress",
+  "done",
+  "cut",
+];
 
 export default function ProjectRoute() {
   const params = useParams();
   const projectId = () => params.id;
 
   const board = createAsync(() => getProjectBoard(projectId()));
+  const b = () => board.latest;
+
+  const refresh = async () => {
+    await revalidate(getProjectBoard.keyFor(projectId()));
+  };
 
   const runAddJourneyStep = useAction(addJourneyStep);
   const runAddUIArea = useAction(addUIArea);
@@ -56,7 +67,7 @@ export default function ProjectRoute() {
     if (!name) return;
     await runAddJourneyStep({ projectId: projectId(), name });
     newStepEl.value = "";
-    window.location.reload();
+    await refresh();
   };
 
   const onAddArea = async (e: Event) => {
@@ -65,7 +76,7 @@ export default function ProjectRoute() {
     if (!name) return;
     await runAddUIArea({ projectId: projectId(), name });
     newAreaEl.value = "";
-    window.location.reload();
+    await refresh();
   };
 
   const onCreateFeature = async (e: Event) => {
@@ -86,24 +97,30 @@ export default function ProjectRoute() {
 
     featureTitleEl.value = "";
     featureDescEl.value = "";
-    window.location.reload();
+    await refresh();
   };
 
-  const onUpdateFeature = async (featureId: string, patch: Partial<Feature>) => {
+  const onUpdateFeature = async (
+    featureId: string,
+    patch: Partial<Feature>
+  ) => {
     await runUpdateFeature({ projectId: projectId(), featureId, patch });
-    window.location.reload();
+    await refresh();
   };
 
   const onDelete = async (featureId: string) => {
     await runDeleteFeature({ projectId: projectId(), featureId });
-    window.location.reload();
+    await refresh();
   };
 
   const onGenerateSteps = async () => {
     try {
       setIsGenSteps(true);
-      await runGenerateCoreSection({ projectId: projectId(), section: "journeySteps" });
-      window.location.reload();
+      await runGenerateCoreSection({
+        projectId: projectId(),
+        section: "journeySteps",
+      });
+      await refresh();
     } finally {
       setIsGenSteps(false);
     }
@@ -112,8 +129,11 @@ export default function ProjectRoute() {
   const onGenerateAreas = async () => {
     try {
       setIsGenAreas(true);
-      await runGenerateCoreSection({ projectId: projectId(), section: "uiAreas" });
-      window.location.reload();
+      await runGenerateCoreSection({
+        projectId: projectId(),
+        section: "uiAreas",
+      });
+      await refresh();
     } finally {
       setIsGenAreas(false);
     }
@@ -122,8 +142,11 @@ export default function ProjectRoute() {
   const onGenerateFeatures = async () => {
     try {
       setIsGenFeatures(true);
-      await runGenerateCoreSection({ projectId: projectId(), section: "features" });
-      window.location.reload();
+      await runGenerateCoreSection({
+        projectId: projectId(),
+        section: "features",
+      });
+      await refresh();
     } finally {
       setIsGenFeatures(false);
     }
@@ -132,46 +155,61 @@ export default function ProjectRoute() {
   const onRenameJourneyStep = async (journeyStepId: string, name: string) => {
     const next = name.trim();
     if (!next) return;
-    await runUpdateJourneyStep({ projectId: projectId(), journeyStepId, name: next });
-    window.location.reload();
+    await runUpdateJourneyStep({
+      projectId: projectId(),
+      journeyStepId,
+      name: next,
+    });
+    await refresh();
   };
 
   const onRenameUIArea = async (uiAreaId: string, name: string) => {
     const next = name.trim();
     if (!next) return;
     await runUpdateUIArea({ projectId: projectId(), uiAreaId, name: next });
-    window.location.reload();
+    await refresh();
   };
 
   return (
     <Container py="8" maxW="7xl">
       <VStack alignItems="stretch" gap="6">
-        <HStack justify="space-between" align="flex-start">
+        <HStack justify="space-between" alignItems="flex-start">
           <Stack gap="1">
             <Box class={css({ fontSize: "xl", fontWeight: "semibold" })}>
-              <Show when={board()} fallback="Loading…">
-                {board()!.project.name}
+              <Show when={b()} fallback="Loading…">
+                {b()!.project.name}
               </Show>
             </Box>
             <HStack gap="3">
               <Link href="/">← Projects</Link>
-              <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void refresh()}
+              >
                 Refresh
               </Button>
             </HStack>
           </Stack>
         </HStack>
 
-        <Show when={board()}>
+        <Show when={b()}>
           {(b) => (
             <>
               <Card.Root>
                 <Card.Header>
                   <Card.Title>Idea</Card.Title>
-                  <Card.Description>Raw input saved with the project.</Card.Description>
+                  <Card.Description>
+                    Raw input saved with the project.
+                  </Card.Description>
                 </Card.Header>
                 <Card.Body>
-                  <Box class={css({ whiteSpace: "pre-wrap", color: b().project.ideaRaw ? "fg.default" : "fg.muted" })}>
+                  <Box
+                    class={css({
+                      whiteSpace: "pre-wrap",
+                      color: b().project.ideaRaw ? "fg.default" : "fg.muted",
+                    })}
+                  >
                     {b().project.ideaRaw || "No idea text yet."}
                   </Box>
                 </Card.Body>
@@ -180,9 +218,14 @@ export default function ProjectRoute() {
               <Grid columns={{ base: 1, md: 2 }} gap="4">
                 <Card.Root>
                   <Card.Header>
-                    <HStack justify="space-between" align="center">
+                    <HStack justify="space-between" alignItems="center">
                       <Card.Title>Add journey step</Card.Title>
-                      <Button variant="outline" size="xs" onClick={onGenerateSteps} disabled={isGenSteps()}>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={onGenerateSteps}
+                        disabled={isGenSteps()}
+                      >
                         {isGenSteps() ? "Generating…" : "Wand"}
                       </Button>
                     </HStack>
@@ -190,13 +233,19 @@ export default function ProjectRoute() {
                   </Card.Header>
                   <Card.Body>
                     <Show when={b().journeySteps.length > 0}>
-                      <VStack alignItems="stretch" gap="2" class={css({ pb: "3" })}>
+                      <VStack
+                        alignItems="stretch"
+                        gap="2"
+                        class={css({ pb: "3" })}
+                      >
                         <For each={b().journeySteps}>
                           {(s) => (
                             <HStack>
-                              <Input
+                              <EditableTextInput
                                 value={s.name}
-                                onBlur={(e) => onRenameJourneyStep(s.id, e.currentTarget.value)}
+                                onCommit={(next) =>
+                                  void onRenameJourneyStep(s.id, next)
+                                }
                               />
                             </HStack>
                           )}
@@ -214,9 +263,14 @@ export default function ProjectRoute() {
 
                 <Card.Root>
                   <Card.Header>
-                    <HStack justify="space-between" align="center">
+                    <HStack justify="space-between" alignItems="center">
                       <Card.Title>Add UI area</Card.Title>
-                      <Button variant="outline" size="xs" onClick={onGenerateAreas} disabled={isGenAreas()}>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={onGenerateAreas}
+                        disabled={isGenAreas()}
+                      >
                         {isGenAreas() ? "Generating…" : "Wand"}
                       </Button>
                     </HStack>
@@ -224,11 +278,20 @@ export default function ProjectRoute() {
                   </Card.Header>
                   <Card.Body>
                     <Show when={b().uiAreas.length > 0}>
-                      <VStack alignItems="stretch" gap="2" class={css({ pb: "3" })}>
+                      <VStack
+                        alignItems="stretch"
+                        gap="2"
+                        class={css({ pb: "3" })}
+                      >
                         <For each={b().uiAreas}>
                           {(a) => (
                             <HStack>
-                              <Input value={a.name} onBlur={(e) => onRenameUIArea(a.id, e.currentTarget.value)} />
+                              <EditableTextInput
+                                value={a.name}
+                                onCommit={(next) =>
+                                  void onRenameUIArea(a.id, next)
+                                }
+                              />
                             </HStack>
                           )}
                         </For>
@@ -246,19 +309,30 @@ export default function ProjectRoute() {
 
               <Card.Root>
                 <Card.Header>
-                  <HStack justify="space-between" align="center">
+                  <HStack justify="space-between" alignItems="center">
                     <Card.Title>Create feature</Card.Title>
-                    <Button variant="outline" size="xs" onClick={onGenerateFeatures} disabled={isGenFeatures()}>
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={onGenerateFeatures}
+                      disabled={isGenFeatures()}
+                    >
                       {isGenFeatures() ? "Generating…" : "Wand"}
                     </Button>
                   </HStack>
-                  <Card.Description>A basic card you can later move around.</Card.Description>
+                  <Card.Description>
+                    A basic card you can later move around.
+                  </Card.Description>
                 </Card.Header>
                 <Card.Body>
                   <form onSubmit={onCreateFeature}>
                     <VStack alignItems="stretch" gap="3">
                       <Input ref={featureTitleEl} placeholder="Feature title" />
-                      <Textarea ref={featureDescEl} placeholder="Short description" class={css({ minH: "90px" })} />
+                      <Textarea
+                        ref={featureDescEl}
+                        placeholder="Short description"
+                        class={css({ minH: "90px" })}
+                      />
                       <HStack justify="flex-end">
                         <Button type="submit">Create feature</Button>
                       </HStack>
@@ -271,17 +345,27 @@ export default function ProjectRoute() {
                 <Card.Header>
                   <Card.Title>Scope Board</Card.Title>
                   <Card.Description>
-                    Columns = UI Areas. Rows = Journey Steps. (MVP: use dropdowns to move features.)
+                    Columns = UI Areas. Rows = Journey Steps. (MVP: use
+                    dropdowns to move features.)
                   </Card.Description>
                 </Card.Header>
                 <Card.Body>
-                  <ScopeBoard
-                    journeySteps={b().journeySteps}
-                    uiAreas={b().uiAreas}
-                    features={b().features}
-                    onUpdate={onUpdateFeature}
-                    onDelete={onDelete}
-                  />
+                  <Show
+                    when={b().features.length > 0}
+                    fallback={
+                      <Box class={css({ color: "fg.muted" })}>
+                        No features yet — create one above (or click “Wand”).
+                      </Box>
+                    }
+                  >
+                    <ScopeBoard
+                      journeySteps={b().journeySteps}
+                      uiAreas={b().uiAreas}
+                      features={b().features}
+                      onUpdate={onUpdateFeature}
+                      onDelete={onDelete}
+                    />
+                  </Show>
                 </Card.Body>
               </Card.Root>
             </>
@@ -299,13 +383,21 @@ function ScopeBoard(props: {
   onUpdate: (featureId: string, patch: Partial<Feature>) => Promise<void>;
   onDelete: (featureId: string) => Promise<void>;
 }) {
-  const allRows = () => [{ id: "unassigned", name: "Unassigned" }, ...props.journeySteps];
-  const allCols = () => [{ id: "unassigned", name: "Unassigned" }, ...props.uiAreas];
+  const allRows = () => [
+    { id: "unassigned", name: "Unassigned" },
+    ...props.journeySteps,
+  ];
+  const allCols = () => [
+    { id: "unassigned", name: "Unassigned" },
+    ...props.uiAreas,
+  ];
 
   const featuresForCell = (rowId: string, colId: string) => {
     const journeyStepId = rowId === "unassigned" ? null : rowId;
     const uiAreaId = colId === "unassigned" ? null : colId;
-    return props.features.filter((f) => f.journeyStepId === journeyStepId && f.uiAreaId === uiAreaId);
+    return props.features.filter(
+      (f) => f.journeyStepId === journeyStepId && f.uiAreaId === uiAreaId
+    );
   };
 
   return (
@@ -368,7 +460,15 @@ function ScopeBoard(props: {
                   >
                     <VStack alignItems="stretch" gap="2">
                       <For each={featuresForCell(row.id, col.id)}>
-                        {(f) => <FeatureCard feature={f} rows={props.journeySteps} cols={props.uiAreas} onUpdate={props.onUpdate} onDelete={props.onDelete} />}
+                        {(f) => (
+                          <FeatureCard
+                            feature={f}
+                            rows={props.journeySteps}
+                            cols={props.uiAreas}
+                            onUpdate={props.onUpdate}
+                            onDelete={props.onDelete}
+                          />
+                        )}
                       </For>
                     </VStack>
                   </Box>
@@ -402,11 +502,14 @@ function FeatureCard(props: {
         gap: "2",
       })}
     >
-      <Input value={f().title} onBlur={(e) => props.onUpdate(f().id, { title: e.currentTarget.value })} />
-      <Textarea
+      <EditableTextInput
+        value={f().title}
+        onCommit={(next) => void props.onUpdate(f().id, { title: next })}
+      />
+      <EditableTextarea
         value={f().description}
-        onBlur={(e) => props.onUpdate(f().id, { description: e.currentTarget.value })}
         class={css({ minH: "70px" })}
+        onCommit={(next) => void props.onUpdate(f().id, { description: next })}
       />
 
       <Grid columns={2} gap="2" class={css({ pt: "1" })}>
@@ -423,10 +526,16 @@ function FeatureCard(props: {
               fontSize: "sm",
             })}
             value={f().journeyStepId ?? ""}
-            onChange={(e) => props.onUpdate(f().id, { journeyStepId: e.currentTarget.value || null })}
+            onChange={(e) =>
+              props.onUpdate(f().id, {
+                journeyStepId: e.currentTarget.value || null,
+              })
+            }
           >
             <option value="">Unassigned</option>
-            <For each={props.rows}>{(r) => <option value={r.id}>{r.name}</option>}</For>
+            <For each={props.rows}>
+              {(r) => <option value={r.id}>{r.name}</option>}
+            </For>
           </select>
         </label>
 
@@ -443,10 +552,16 @@ function FeatureCard(props: {
               fontSize: "sm",
             })}
             value={f().uiAreaId ?? ""}
-            onChange={(e) => props.onUpdate(f().id, { uiAreaId: e.currentTarget.value || null })}
+            onChange={(e) =>
+              props.onUpdate(f().id, {
+                uiAreaId: e.currentTarget.value || null,
+              })
+            }
           >
             <option value="">Unassigned</option>
-            <For each={props.cols}>{(c) => <option value={c.id}>{c.name}</option>}</For>
+            <For each={props.cols}>
+              {(c) => <option value={c.id}>{c.name}</option>}
+            </For>
           </select>
         </label>
 
@@ -463,7 +578,9 @@ function FeatureCard(props: {
               fontSize: "sm",
             })}
             value={f().phase}
-            onChange={(e) => props.onUpdate(f().id, { phase: e.currentTarget.value as Phase })}
+            onChange={(e) =>
+              props.onUpdate(f().id, { phase: e.currentTarget.value as Phase })
+            }
           >
             <For each={PHASES}>{(p) => <option value={p}>{p}</option>}</For>
           </select>
@@ -482,9 +599,15 @@ function FeatureCard(props: {
               fontSize: "sm",
             })}
             value={f().status}
-            onChange={(e) => props.onUpdate(f().id, { status: e.currentTarget.value as FeatureStatus })}
+            onChange={(e) =>
+              props.onUpdate(f().id, {
+                status: e.currentTarget.value as FeatureStatus,
+              })
+            }
           >
-            <For each={STATUSES}>{(s) => <option value={s}>{s.replaceAll("_", " ")}</option>}</For>
+            <For each={STATUSES}>
+              {(s) => <option value={s}>{s.replaceAll("_", " ")}</option>}
+            </For>
           </select>
         </label>
       </Grid>
@@ -493,7 +616,11 @@ function FeatureCard(props: {
         <Box class={css({ fontSize: "xs", color: "fg.muted" })}>
           Updated {new Date(f().updatedAt).toLocaleString()}
         </Box>
-        <Button variant="outline" size="xs" onClick={() => props.onDelete(f().id)}>
+        <Button
+          variant="outline"
+          size="xs"
+          onClick={() => props.onDelete(f().id)}
+        >
           Delete
         </Button>
       </HStack>
@@ -501,4 +628,64 @@ function FeatureCard(props: {
   );
 }
 
+function EditableTextInput(props: {
+  value: string;
+  onCommit: (next: string) => void;
+}) {
+  const [val, setVal] = createSignal(props.value);
+  const [dirty, setDirty] = createSignal(false);
 
+  createEffect(() => {
+    if (!dirty()) setVal(props.value);
+  });
+
+  return (
+    <Input
+      value={val()}
+      onInput={(e) => {
+        setDirty(true);
+        setVal(e.currentTarget.value);
+      }}
+      onBlur={() => {
+        const next = val().trim();
+        setDirty(false);
+        if (!next) {
+          setVal(props.value);
+          return;
+        }
+        if (next === props.value) return;
+        props.onCommit(next);
+      }}
+    />
+  );
+}
+
+function EditableTextarea(props: {
+  value: string;
+  class?: string;
+  onCommit: (next: string) => void;
+}) {
+  const [val, setVal] = createSignal(props.value);
+  const [dirty, setDirty] = createSignal(false);
+
+  createEffect(() => {
+    if (!dirty()) setVal(props.value);
+  });
+
+  return (
+    <Textarea
+      value={val()}
+      class={props.class}
+      onInput={(e) => {
+        setDirty(true);
+        setVal(e.currentTarget.value);
+      }}
+      onBlur={() => {
+        const next = val();
+        setDirty(false);
+        if (next === props.value) return;
+        props.onCommit(next);
+      }}
+    />
+  );
+}
