@@ -9,7 +9,7 @@ import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { Link } from "~/components/ui/link";
 
-import type { Feature, FeatureStatus, Phase } from "~/lib/domain";
+import type { Feature, FeatureStatus, Phase, ProjectBoard } from "~/lib/domain";
 import {
   addJourneyStep,
   addUIArea,
@@ -36,9 +36,27 @@ export default function ProjectRoute() {
   const projectId = (): string => params.id!;
 
   const board = createAsync(() => getProjectBoard(projectId()));
-  const b = () => board.latest;
+  // Keep the last successful board value mounted while revalidating.
+  // Otherwise `board.latest` can briefly become `undefined`, causing <Show> blocks
+  // to unmount/remount and clearing any in-progress form input.
+  const [boardSnapshot, setBoardSnapshot] = createSignal<ProjectBoard>();
+
+  createEffect(() => {
+    const latest = board.latest;
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.debug("[project:board] latest", latest ? "ok" : "undefined");
+    }
+    if (latest) setBoardSnapshot(latest);
+  });
+
+  const b = () => boardSnapshot();
 
   const refresh = async () => {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.debug("[project:board] revalidate", projectId());
+    }
     await revalidate(getProjectBoard.keyFor(projectId()));
   };
 
