@@ -515,414 +515,491 @@ export default function ProjectRoute() {
           when={b()}
           fallback={<Box class={css({ color: "fg.muted" })}>Loading…</Box>}
         >
-          <Box class={css({ overflowX: "auto" })}>
-            <HStack
-              align="start"
-              gap="4"
-              class={css({ minW: "max-content", pb: "2" })}
-            >
-              <For each={orderedColumns()}>
-                {(col) => {
-                  const columnItems = () => itemsByListId().get(col.key) ?? [];
-                  const listForColumn = () =>
-                    lists().find((l) => l.id === col.listId) ?? null;
-                  const isColumnDragOver = () => dragOverColumnId() === col.key;
+          {/* Responsive board layout: wrap columns to avoid horizontal scrolling */}
+          <Box
+            class={css({
+              display: "grid",
+              // Keep everything within the viewport width; wrap into rows instead of scrolling horizontally.
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "4",
+              alignItems: "start",
+              pb: "2",
+              maxW: "full",
+              overflowX: "hidden",
+            })}
+          >
+            <For each={orderedColumns()}>
+              {(col) => {
+                const columnItems = () => itemsByListId().get(col.key) ?? [];
+                const listForColumn = () =>
+                  lists().find((l) => l.id === col.listId) ?? null;
+                const isColumnDragOver = () => dragOverColumnId() === col.key;
+                const isListDragOver = () =>
+                  !!draggingListId() && dragOverListId() === col.listId;
+                const isItemDragOverThisColumn = () =>
+                  !!draggingItemId() && isColumnDragOver();
 
-                  return (
-                    <Card.Root
-                      class={css({
-                        width: "360px",
-                        outlineWidth: isColumnDragOver() ? "2px" : "0px",
-                        outlineColor: "border.emphasized",
-                      })}
-                    >
-                      <Card.Header>
-                        <HStack justify="space-between" align="start" gap="2">
+                return (
+                  <Card.Root
+                    class={css({
+                      width: "100%",
+                      minW: 0,
+                      outlineWidth:
+                        isColumnDragOver() || isListDragOver() ? "2px" : "0px",
+                      outlineStyle:
+                        isColumnDragOver() || isListDragOver()
+                          ? "dashed"
+                          : "solid",
+                      outlineOffset: "2px",
+                      outlineColor: "border.emphasized",
+                      bg: isListDragOver()
+                        ? "gray.surface.bg.hover"
+                        : undefined,
+                      transitionProperty:
+                        "outline-color, outline-offset, background-color",
+                      transitionDuration: "150ms",
+                    })}
+                  >
+                    <Card.Header>
+                      <HStack justify="space-between" align="start" gap="2">
+                        <Box
+                          class={css({
+                            fontWeight: "semibold",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "2",
+                            userSelect: "none",
+                          })}
+                        >
+                          <Show when={!isLoose(col.listId)}>
+                            <Box
+                              as="span"
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer?.setData(
+                                  "text/plain",
+                                  String(col.listId)
+                                );
+                                applyMinimalDragImage(e);
+                                setDraggingListId(col.listId);
+                              }}
+                              onDragEnd={() => {
+                                setDraggingListId(null);
+                                setDragOverListId(null);
+                              }}
+                              onDragOver={(e) => {
+                                if (!draggingListId()) return;
+                                e.preventDefault();
+                                setDragOverListId(col.listId);
+                              }}
+                              onDragLeave={() => {
+                                // Keep this subtle: if you leave a handle, remove the "target" affordance.
+                                setDragOverListId(null);
+                              }}
+                              onDrop={async (e) => {
+                                e.preventDefault();
+                                setDragOverListId(null);
+                                await onListDropBefore(String(col.listId));
+                              }}
+                              class={css({
+                                cursor: "grab",
+                                borderWidth: "1px",
+                                borderColor:
+                                  dragOverListId() === col.listId
+                                    ? "border.emphasized"
+                                    : "transparent",
+                                rounded: "sm",
+                                px: "1",
+                                color: "fg.muted",
+                                fontSize: "sm",
+                                bg:
+                                  dragOverListId() === col.listId
+                                    ? "gray.surface.bg.hover"
+                                    : "transparent",
+                                transitionProperty:
+                                  "border-color, background-color",
+                                transitionDuration: "150ms",
+                              })}
+                              aria-label="Drag to reorder list"
+                            >
+                              ⋮⋮
+                            </Box>
+                          </Show>
                           <Box
+                            as="span"
                             class={css({
-                              fontWeight: "semibold",
-                              display: "flex",
+                              color: "fg.muted",
+                              display: "inline-flex",
                               alignItems: "center",
-                              gap: "2",
-                              userSelect: "none",
                             })}
                           >
-                            <Show when={!isLoose(col.listId)}>
+                            <ListIcon />
+                          </Box>
+                          <Box as="span">{col.title}</Box>
+                        </Box>
+
+                        <Show when={!isLoose(col.listId)}>
+                          <HStack gap="1">
+                            <IconButton
+                              size="sm"
+                              variant="ghost"
+                              aria-label="Edit list"
+                              onClick={() => {
+                                const list = listForColumn();
+                                if (list) startEditList(list);
+                              }}
+                            >
+                              <PencilIcon />
+                            </IconButton>
+                            <IconButton
+                              size="sm"
+                              variant="ghost"
+                              aria-label="Delete list"
+                              onClick={async () => {
+                                if (!col.listId) return;
+                                await runDeleteList({
+                                  projectId: projectId(),
+                                  listId: col.listId,
+                                });
+                                await refresh();
+                              }}
+                            >
+                              <Trash2Icon />
+                            </IconButton>
+                          </HStack>
+                        </Show>
+                      </HStack>
+
+                      <Show when={editingListId() === col.listId}>
+                        <VStack alignItems="stretch" gap="2" mt="3">
+                          <Input
+                            value={editingListTitle()}
+                            onInput={(e) =>
+                              setEditingListTitle(e.currentTarget.value)
+                            }
+                          />
+                          <Textarea
+                            value={editingListDesc()}
+                            onInput={(e) =>
+                              setEditingListDesc(e.currentTarget.value)
+                            }
+                            class={css({ minH: "72px" })}
+                          />
+                          <HStack justify="flex-end" gap="2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={cancelEditList}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="solid"
+                              onClick={saveEditList}
+                            >
+                              Save
+                            </Button>
+                          </HStack>
+                        </VStack>
+                      </Show>
+                    </Card.Header>
+
+                    <Card.Body>
+                      <VStack
+                        alignItems="stretch"
+                        gap="2"
+                        class={css({
+                          rounded: "md",
+                          p: "2",
+                          bg: isItemDragOverThisColumn()
+                            ? "gray.surface.bg.hover"
+                            : "transparent",
+                          outlineWidth: isItemDragOverThisColumn()
+                            ? "2px"
+                            : "0px",
+                          outlineStyle: isItemDragOverThisColumn()
+                            ? "dashed"
+                            : "solid",
+                          outlineOffset: "2px",
+                          outlineColor: "border.emphasized",
+                          transitionProperty:
+                            "background-color, outline-color, outline-offset",
+                          transitionDuration: "150ms",
+                        })}
+                        onDragOver={(e) => {
+                          if (!draggingItemId()) return;
+                          e.preventDefault();
+                          setDragOverColumnId(col.key);
+                          setDragOverItemId(null);
+                        }}
+                        onDrop={async (e) => {
+                          // Allow dropping anywhere in the column body to move to end.
+                          e.preventDefault();
+                          const dragged = draggingItemId();
+                          if (!dragged) return;
+                          const destListId = col.listId;
+                          const destItems = columnItems().filter(
+                            (x) => x.id !== dragged
+                          );
+                          setDragOverColumnId(null);
+                          await moveItemByDnD(
+                            dragged,
+                            destListId,
+                            destItems.length
+                          );
+                        }}
+                      >
+                        <Show
+                          when={columnItems().length > 0}
+                          fallback={
+                            <Box
+                              class={css({
+                                color: "fg.muted",
+                                fontSize: "sm",
+                              })}
+                            >
+                              No items.
+                            </Box>
+                          }
+                        >
+                          <For each={columnItems()}>
+                            {(it) => (
                               <Box
-                                as="span"
-                                draggable
-                                onDragStart={(e) => {
-                                  e.dataTransfer?.setData(
-                                    "text/plain",
-                                    String(col.listId)
-                                  );
-                                  applyMinimalDragImage(e);
-                                  setDraggingListId(col.listId);
-                                }}
-                                onDragEnd={() => {
-                                  setDraggingListId(null);
-                                  setDragOverListId(null);
-                                }}
+                                class={css({
+                                  position: "relative",
+                                  borderWidth: "1px",
+                                  borderColor: "border",
+                                  rounded: "md",
+                                  px: "3",
+                                  py: "2",
+                                  outlineWidth:
+                                    dragOverItemId() === it.id ? "2px" : "0px",
+                                  outlineColor: "border.emphasized",
+                                  outlineOffset:
+                                    dragOverItemId() === it.id ? "2px" : "0px",
+                                  bg:
+                                    dragOverItemId() === it.id
+                                      ? "gray.surface.bg.hover"
+                                      : "transparent",
+                                  transitionProperty:
+                                    "outline-color, outline-offset, background-color",
+                                  transitionDuration: "150ms",
+                                  opacity:
+                                    draggingItemId() === it.id ? 0.35 : 1,
+                                })}
                                 onDragOver={(e) => {
-                                  if (!draggingListId()) return;
+                                  if (!draggingItemId()) return;
                                   e.preventDefault();
-                                  setDragOverListId(col.listId);
+                                  e.stopPropagation();
+                                  setDragOverItemId(it.id);
+                                  setDragOverColumnId(null);
                                 }}
                                 onDrop={async (e) => {
                                   e.preventDefault();
-                                  setDragOverListId(null);
-                                  await onListDropBefore(String(col.listId));
+                                  e.stopPropagation();
+                                  const dragged = draggingItemId();
+                                  if (!dragged) return;
+
+                                  const destListId = col.listId;
+                                  const destItems = columnItems().filter(
+                                    (x) => x.id !== dragged
+                                  );
+                                  const targetIdx = destItems.findIndex(
+                                    (x) => x.id === it.id
+                                  );
+                                  if (targetIdx < 0) return;
+
+                                  setDragOverItemId(null);
+                                  await moveItemByDnD(
+                                    dragged,
+                                    destListId,
+                                    targetIdx
+                                  );
                                 }}
-                                class={css({
-                                  cursor: "grab",
-                                  borderWidth: "1px",
-                                  borderColor:
-                                    dragOverListId() === col.listId
-                                      ? "border.emphasized"
-                                      : "transparent",
-                                  rounded: "sm",
-                                  px: "1",
-                                  color: "fg.muted",
-                                  fontSize: "sm",
-                                })}
-                                aria-label="Drag to reorder list"
                               >
-                                ⋮⋮
+                                <Show
+                                  when={
+                                    dragOverItemId() === it.id &&
+                                    !!draggingItemId() &&
+                                    draggingItemId() !== it.id
+                                  }
+                                >
+                                  <Box
+                                    class={css({
+                                      position: "absolute",
+                                      left: "2",
+                                      right: "2",
+                                      top: "-1",
+                                      height: "2px",
+                                      bg: "border.emphasized",
+                                      rounded: "full",
+                                    })}
+                                  />
+                                </Show>
+                                <HStack
+                                  justify="space-between"
+                                  align="start"
+                                  gap="2"
+                                >
+                                  <HStack gap="2" align="center">
+                                    <Box
+                                      as="span"
+                                      draggable
+                                      onDragStart={(e) => {
+                                        e.dataTransfer?.setData(
+                                          "text/plain",
+                                          it.id
+                                        );
+                                        applyMinimalDragImage(e);
+                                        setDraggingItemId(it.id);
+                                      }}
+                                      onDragEnd={() => {
+                                        setDraggingItemId(null);
+                                        setDragOverItemId(null);
+                                        setDragOverColumnId(null);
+                                      }}
+                                      class={css({
+                                        cursor: "grab",
+                                        borderWidth: "1px",
+                                        borderColor: "border",
+                                        rounded: "sm",
+                                        px: "1",
+                                        color: "fg.muted",
+                                        fontSize: "sm",
+                                        userSelect: "none",
+                                      })}
+                                      aria-label="Drag to move item"
+                                    >
+                                      ⋮⋮
+                                    </Box>
+                                    <Box class={css({ fontWeight: "medium" })}>
+                                      {it.label}
+                                    </Box>
+                                  </HStack>
+
+                                  <HStack gap="1">
+                                    <IconButton
+                                      size="sm"
+                                      variant="ghost"
+                                      aria-label="Edit item"
+                                      onClick={() => startEditItem(it)}
+                                    >
+                                      <PencilIcon />
+                                    </IconButton>
+                                    <IconButton
+                                      size="sm"
+                                      variant="ghost"
+                                      aria-label="Delete item"
+                                      onClick={async () => {
+                                        await runDeleteItem({
+                                          projectId: projectId(),
+                                          itemId: it.id,
+                                        });
+                                        await refresh();
+                                      }}
+                                    >
+                                      <Trash2Icon />
+                                    </IconButton>
+                                  </HStack>
+                                </HStack>
+
+                                <Show when={editingItemId() === it.id}>
+                                  <VStack alignItems="stretch" gap="2" mt="3">
+                                    <Input
+                                      value={editingItemLabel()}
+                                      onInput={(e) =>
+                                        setEditingItemLabel(
+                                          e.currentTarget.value
+                                        )
+                                      }
+                                    />
+                                    <Textarea
+                                      value={editingItemDesc()}
+                                      onInput={(e) =>
+                                        setEditingItemDesc(
+                                          e.currentTarget.value
+                                        )
+                                      }
+                                      class={css({ minH: "72px" })}
+                                    />
+                                    <HStack justify="flex-end" gap="2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={cancelEditItem}
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="solid"
+                                        onClick={saveEditItem}
+                                      >
+                                        Save
+                                      </Button>
+                                    </HStack>
+                                  </VStack>
+                                </Show>
                               </Box>
-                            </Show>
-                            <Box
-                              as="span"
-                              class={css({
-                                color: "fg.muted",
-                                display: "inline-flex",
-                                alignItems: "center",
-                              })}
-                            >
-                              <ListIcon />
-                            </Box>
-                            <Box as="span">{col.title}</Box>
-                          </Box>
+                            )}
+                          </For>
+                        </Show>
 
-                          <Show when={!isLoose(col.listId)}>
-                            <HStack gap="1">
-                              <IconButton
-                                size="sm"
-                                variant="ghost"
-                                aria-label="Edit list"
-                                onClick={() => {
-                                  const list = listForColumn();
-                                  if (list) startEditList(list);
-                                }}
-                              >
-                                <PencilIcon />
-                              </IconButton>
-                              <IconButton
-                                size="sm"
-                                variant="ghost"
-                                aria-label="Delete list"
-                                onClick={async () => {
-                                  if (!col.listId) return;
-                                  await runDeleteList({
-                                    projectId: projectId(),
-                                    listId: col.listId,
-                                  });
-                                  await refresh();
-                                }}
-                              >
-                                <Trash2Icon />
-                              </IconButton>
-                            </HStack>
-                          </Show>
-                        </HStack>
-
-                        <Show when={editingListId() === col.listId}>
-                          <VStack alignItems="stretch" gap="2" mt="3">
-                            <Input
-                              value={editingListTitle()}
-                              onInput={(e) =>
-                                setEditingListTitle(e.currentTarget.value)
-                              }
-                            />
-                            <Textarea
-                              value={editingListDesc()}
-                              onInput={(e) =>
-                                setEditingListDesc(e.currentTarget.value)
-                              }
-                              class={css({ minH: "72px" })}
-                            />
-                            <HStack justify="flex-end" gap="2">
+                        <Box pt="2">
+                          <Show
+                            when={addingItemListId() === col.listId}
+                            fallback={
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={cancelEditList}
+                                onClick={() => openAddItem(col.listId)}
                               >
-                                Cancel
+                                Add item
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="solid"
-                                onClick={saveEditList}
-                              >
-                                Save
-                              </Button>
-                            </HStack>
-                          </VStack>
-                        </Show>
-                      </Card.Header>
-
-                      <Card.Body>
-                        <VStack
-                          alignItems="stretch"
-                          gap="2"
-                          onDragOver={(e) => {
-                            if (!draggingItemId()) return;
-                            e.preventDefault();
-                            setDragOverColumnId(col.key);
-                            setDragOverItemId(null);
-                          }}
-                          onDrop={async (e) => {
-                            // Allow dropping anywhere in the column body to move to end.
-                            e.preventDefault();
-                            const dragged = draggingItemId();
-                            if (!dragged) return;
-                            const destListId = col.listId;
-                            const destItems = columnItems().filter(
-                              (x) => x.id !== dragged
-                            );
-                            setDragOverColumnId(null);
-                            await moveItemByDnD(
-                              dragged,
-                              destListId,
-                              destItems.length
-                            );
-                          }}
-                        >
-                          <Show
-                            when={columnItems().length > 0}
-                            fallback={
-                              <Box
-                                class={css({
-                                  color: "fg.muted",
-                                  fontSize: "sm",
-                                })}
-                              >
-                                No items.
-                              </Box>
                             }
                           >
-                            <For each={columnItems()}>
-                              {(it) => (
-                                <Box
-                                  class={css({
-                                    borderWidth: "1px",
-                                    borderColor: "border",
-                                    rounded: "md",
-                                    px: "3",
-                                    py: "2",
-                                    outlineWidth:
-                                      dragOverItemId() === it.id
-                                        ? "2px"
-                                        : "0px",
-                                    outlineColor: "border.emphasized",
-                                    opacity:
-                                      draggingItemId() === it.id ? 0.35 : 1,
-                                  })}
-                                  onDragOver={(e) => {
-                                    if (!draggingItemId()) return;
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setDragOverItemId(it.id);
-                                    setDragOverColumnId(null);
-                                  }}
-                                  onDrop={async (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    const dragged = draggingItemId();
-                                    if (!dragged) return;
-
-                                    const destListId = col.listId;
-                                    const destItems = columnItems().filter(
-                                      (x) => x.id !== dragged
-                                    );
-                                    const targetIdx = destItems.findIndex(
-                                      (x) => x.id === it.id
-                                    );
-                                    if (targetIdx < 0) return;
-
-                                    setDragOverItemId(null);
-                                    await moveItemByDnD(
-                                      dragged,
-                                      destListId,
-                                      targetIdx
-                                    );
-                                  }}
-                                >
-                                  <HStack
-                                    justify="space-between"
-                                    align="start"
-                                    gap="2"
-                                  >
-                                    <HStack gap="2" align="center">
-                                      <Box
-                                        as="span"
-                                        draggable
-                                        onDragStart={(e) => {
-                                          e.dataTransfer?.setData(
-                                            "text/plain",
-                                            it.id
-                                          );
-                                          applyMinimalDragImage(e);
-                                          setDraggingItemId(it.id);
-                                        }}
-                                        onDragEnd={() => {
-                                          setDraggingItemId(null);
-                                          setDragOverItemId(null);
-                                          setDragOverColumnId(null);
-                                        }}
-                                        class={css({
-                                          cursor: "grab",
-                                          borderWidth: "1px",
-                                          borderColor: "border",
-                                          rounded: "sm",
-                                          px: "1",
-                                          color: "fg.muted",
-                                          fontSize: "sm",
-                                          userSelect: "none",
-                                        })}
-                                        aria-label="Drag to move item"
-                                      >
-                                        ⋮⋮
-                                      </Box>
-                                      <Box
-                                        class={css({ fontWeight: "medium" })}
-                                      >
-                                        {it.label}
-                                      </Box>
-                                    </HStack>
-
-                                    <HStack gap="1">
-                                      <IconButton
-                                        size="sm"
-                                        variant="ghost"
-                                        aria-label="Edit item"
-                                        onClick={() => startEditItem(it)}
-                                      >
-                                        <PencilIcon />
-                                      </IconButton>
-                                      <IconButton
-                                        size="sm"
-                                        variant="ghost"
-                                        aria-label="Delete item"
-                                        onClick={async () => {
-                                          await runDeleteItem({
-                                            projectId: projectId(),
-                                            itemId: it.id,
-                                          });
-                                          await refresh();
-                                        }}
-                                      >
-                                        <Trash2Icon />
-                                      </IconButton>
-                                    </HStack>
-                                  </HStack>
-
-                                  <Show when={editingItemId() === it.id}>
-                                    <VStack alignItems="stretch" gap="2" mt="3">
-                                      <Input
-                                        value={editingItemLabel()}
-                                        onInput={(e) =>
-                                          setEditingItemLabel(
-                                            e.currentTarget.value
-                                          )
-                                        }
-                                      />
-                                      <Textarea
-                                        value={editingItemDesc()}
-                                        onInput={(e) =>
-                                          setEditingItemDesc(
-                                            e.currentTarget.value
-                                          )
-                                        }
-                                        class={css({ minH: "72px" })}
-                                      />
-                                      <HStack justify="flex-end" gap="2">
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={cancelEditItem}
-                                        >
-                                          Cancel
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="solid"
-                                          onClick={saveEditItem}
-                                        >
-                                          Save
-                                        </Button>
-                                      </HStack>
-                                    </VStack>
-                                  </Show>
-                                </Box>
-                              )}
-                            </For>
-                          </Show>
-
-                          <Box pt="2">
-                            <Show
-                              when={addingItemListId() === col.listId}
-                              fallback={
+                            <VStack alignItems="stretch" gap="2">
+                              <Input
+                                placeholder="Item label"
+                                value={newItemLabel()}
+                                onInput={(e) =>
+                                  setNewItemLabel(e.currentTarget.value)
+                                }
+                              />
+                              <Textarea
+                                placeholder="Description (optional)"
+                                value={newItemDesc()}
+                                onInput={(e) =>
+                                  setNewItemDesc(e.currentTarget.value)
+                                }
+                                class={css({ minH: "72px" })}
+                              />
+                              <HStack justify="flex-end" gap="2">
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => openAddItem(col.listId)}
+                                  onClick={cancelAddItem}
                                 >
-                                  Add item
+                                  Cancel
                                 </Button>
-                              }
-                            >
-                              <VStack alignItems="stretch" gap="2">
-                                <Input
-                                  placeholder="Item label"
-                                  value={newItemLabel()}
-                                  onInput={(e) =>
-                                    setNewItemLabel(e.currentTarget.value)
-                                  }
-                                />
-                                <Textarea
-                                  placeholder="Description (optional)"
-                                  value={newItemDesc()}
-                                  onInput={(e) =>
-                                    setNewItemDesc(e.currentTarget.value)
-                                  }
-                                  class={css({ minH: "72px" })}
-                                />
-                                <HStack justify="flex-end" gap="2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={cancelAddItem}
-                                  >
-                                    Cancel
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="solid"
-                                    onClick={createItemFor}
-                                  >
-                                    Add
-                                  </Button>
-                                </HStack>
-                              </VStack>
-                            </Show>
-                          </Box>
-                        </VStack>
-                      </Card.Body>
-                    </Card.Root>
-                  );
-                }}
-              </For>
-            </HStack>
+                                <Button
+                                  size="sm"
+                                  variant="solid"
+                                  onClick={createItemFor}
+                                >
+                                  Add
+                                </Button>
+                              </HStack>
+                            </VStack>
+                          </Show>
+                        </Box>
+                      </VStack>
+                    </Card.Body>
+                  </Card.Root>
+                );
+              }}
+            </For>
           </Box>
         </Show>
       </VStack>
