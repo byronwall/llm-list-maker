@@ -12,13 +12,7 @@ import { Link } from "~/components/ui/link";
 import { Textarea } from "~/components/ui/textarea";
 
 import type { Item, List, ProjectBoard } from "~/lib/domain";
-import {
-  ListIcon,
-  PencilIcon,
-  Trash2Icon,
-  Wand2Icon,
-  XIcon,
-} from "lucide-solid";
+import { PencilIcon, Trash2Icon, Wand2Icon, XIcon } from "lucide-solid";
 import { aiHelp } from "../../server/ai-help";
 import {
   aiReviewBoard,
@@ -361,9 +355,131 @@ export default function ProjectRoute() {
     await refresh();
   };
 
+  const compactCardHeaderClass = css({ p: "4", gap: "1" });
+  const compactCardBodyClass = css({ px: "4", pb: "4" });
+
+  const boardGridClass = css({
+    display: "grid",
+    gridTemplateColumns: {
+      base: "1fr",
+      md: "repeat(2, minmax(0, 1fr))",
+      xl: "repeat(3, minmax(0, 1fr))",
+    },
+    gap: "3",
+    alignItems: "start",
+    pb: "2",
+  });
+
+  const columnShellClass = (isDragTarget: boolean) =>
+    css({
+      width: "100%",
+      minW: 0,
+      rounded: "lg",
+      overflow: "hidden",
+      bg: isDragTarget ? "gray.surface.bg.hover" : "gray.surface.bg",
+      borderWidth: "1px",
+      borderColor: "border",
+      outlineWidth: isDragTarget ? "2px" : "0px",
+      outlineStyle: isDragTarget ? "dashed" : "solid",
+      outlineOffset: "2px",
+      outlineColor: "border.emphasized",
+      transitionProperty:
+        "outline-color, outline-offset, background-color, border-color",
+      transitionDuration: "150ms",
+      // Progressive disclosure for list-level affordances.
+      "& .colActions": {
+        opacity: 0,
+        pointerEvents: "none",
+        transitionProperty: "opacity",
+        transitionDuration: "120ms",
+      },
+      "& .colHandle": {
+        opacity: 0,
+        transitionProperty: "opacity",
+        transitionDuration: "120ms",
+      },
+      _hover: {
+        borderColor: "border.emphasized",
+        "& .colActions": { opacity: 1, pointerEvents: "auto" },
+        "& .colHandle": { opacity: 1 },
+      },
+      _focusWithin: {
+        "& .colActions": { opacity: 1, pointerEvents: "auto" },
+        "& .colHandle": { opacity: 1 },
+      },
+    });
+
+  const columnHeaderClass = css({
+    px: "3",
+    py: "2",
+    borderBottomWidth: "1px",
+    borderColor: "border",
+  });
+
+  const columnBodyClass = css({
+    px: "3",
+    py: "2",
+  });
+
+  const itemsStackClass = (isDragTarget: boolean) =>
+    css({
+      display: "flex",
+      flexDirection: "column",
+      gap: "2",
+      rounded: "md",
+      bg: isDragTarget ? "gray.surface.bg.hover" : "transparent",
+      outlineWidth: isDragTarget ? "2px" : "0px",
+      outlineStyle: isDragTarget ? "dashed" : "solid",
+      outlineOffset: "2px",
+      outlineColor: "border.emphasized",
+      transitionProperty: "background-color, outline-color, outline-offset",
+      transitionDuration: "150ms",
+      minH: "10",
+    });
+
+  const itemRowClass = (isDropTarget: boolean, isDragging: boolean) =>
+    css({
+      position: "relative",
+      rounded: "md",
+      px: "2",
+      py: "2",
+      bg: "gray.subtle.bg",
+      borderWidth: "1px",
+      borderColor: isDropTarget ? "border.emphasized" : "transparent",
+      outlineWidth: isDropTarget ? "2px" : "0px",
+      outlineColor: "border.emphasized",
+      outlineOffset: isDropTarget ? "2px" : "0px",
+      transitionProperty:
+        "outline-color, outline-offset, background-color, border-color, opacity",
+      transitionDuration: "150ms",
+      opacity: isDragging ? 0.35 : 1,
+      // Progressive disclosure for item-level affordances.
+      "& .itemActions": {
+        opacity: 0,
+        pointerEvents: "none",
+        transitionProperty: "opacity",
+        transitionDuration: "120ms",
+      },
+      "& .itemHandle": {
+        opacity: 0,
+        transitionProperty: "opacity",
+        transitionDuration: "120ms",
+      },
+      _hover: {
+        bg: "gray.subtle.bg.hover",
+        borderColor: isDropTarget ? "border.emphasized" : "border",
+        "& .itemActions": { opacity: 1, pointerEvents: "auto" },
+        "& .itemHandle": { opacity: 1 },
+      },
+      _focusWithin: {
+        "& .itemActions": { opacity: 1, pointerEvents: "auto" },
+        "& .itemHandle": { opacity: 1 },
+      },
+    });
+
   return (
-    <Container py="10" maxW="6xl">
-      <VStack alignItems="stretch" gap="6">
+    <Container py="8" maxW="6xl">
+      <VStack alignItems="stretch" gap="5">
         <HStack justify="space-between" alignItems="start">
           <Stack gap="1">
             <HStack gap="3">
@@ -416,7 +532,7 @@ export default function ProjectRoute() {
                     {b()!.project.title}
                   </Box>
                   <IconButton
-                    size="sm"
+                    size="xs"
                     variant="plain"
                     aria-label="Edit project"
                     onClick={startEditProject}
@@ -552,11 +668,11 @@ export default function ProjectRoute() {
         </Dialog.Root>
 
         <Card.Root>
-          <Card.Header>
+          <Card.Header class={compactCardHeaderClass}>
             <Card.Title>Add a list</Card.Title>
             <Card.Description>Lists are columns on the board.</Card.Description>
           </Card.Header>
-          <Card.Body>
+          <Card.Body class={compactCardBodyClass}>
             <form onSubmit={onCreateList}>
               <VStack alignItems="stretch" gap="3">
                 <Input
@@ -580,13 +696,13 @@ export default function ProjectRoute() {
 
         <Show when={reviewCommentary() || reviewQuestions().length > 0}>
           <Card.Root>
-            <Card.Header>
+            <Card.Header class={compactCardHeaderClass}>
               <Card.Title>AI review</Card.Title>
               <Card.Description>
                 Commentary + questions about your current board.
               </Card.Description>
             </Card.Header>
-            <Card.Body>
+            <Card.Body class={compactCardBodyClass}>
               <VStack alignItems="stretch" gap="3">
                 <Show when={reviewCommentary()}>
                   <Box class={css({ whiteSpace: "pre-wrap" })}>
@@ -611,19 +727,7 @@ export default function ProjectRoute() {
           when={b()}
           fallback={<Box class={css({ color: "fg.muted" })}>Loading…</Box>}
         >
-          {/* Responsive board layout: wrap columns to avoid horizontal scrolling */}
-          <Box
-            class={css({
-              display: "grid",
-              // Keep everything within the viewport width; wrap into rows instead of scrolling horizontally.
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: "4",
-              alignItems: "start",
-              pb: "2",
-              maxW: "full",
-              overflowX: "hidden",
-            })}
-          >
+          <Box class={boardGridClass}>
             <For each={orderedColumns()}>
               {(col) => {
                 const columnItems = () => itemsByListId().get(col.key) ?? [];
@@ -636,27 +740,12 @@ export default function ProjectRoute() {
                   !!draggingItemId() && isColumnDragOver();
 
                 return (
-                  <Card.Root
-                    class={css({
-                      width: "100%",
-                      minW: 0,
-                      outlineWidth:
-                        isColumnDragOver() || isListDragOver() ? "2px" : "0px",
-                      outlineStyle:
-                        isColumnDragOver() || isListDragOver()
-                          ? "dashed"
-                          : "solid",
-                      outlineOffset: "2px",
-                      outlineColor: "border.emphasized",
-                      bg: isListDragOver()
-                        ? "gray.surface.bg.hover"
-                        : undefined,
-                      transitionProperty:
-                        "outline-color, outline-offset, background-color",
-                      transitionDuration: "150ms",
-                    })}
+                  <Box
+                    class={columnShellClass(
+                      isColumnDragOver() || isListDragOver()
+                    )}
                   >
-                    <Card.Header>
+                    <Box class={columnHeaderClass}>
                       <HStack
                         justify="space-between"
                         alignItems="start"
@@ -701,47 +790,35 @@ export default function ProjectRoute() {
                                 setDragOverListId(null);
                                 await onListDropBefore(String(col.listId));
                               }}
-                              class={css({
+                              class={`${css({
                                 cursor: "grab",
-                                borderWidth: "1px",
-                                borderColor:
-                                  dragOverListId() === col.listId
-                                    ? "border.emphasized"
-                                    : "transparent",
                                 rounded: "sm",
                                 px: "1",
                                 color: "fg.muted",
                                 fontSize: "sm",
+                                lineHeight: "1",
                                 bg:
                                   dragOverListId() === col.listId
                                     ? "gray.surface.bg.hover"
                                     : "transparent",
-                                transitionProperty:
-                                  "border-color, background-color",
-                                transitionDuration: "150ms",
-                              })}
+                                borderWidth:
+                                  dragOverListId() === col.listId
+                                    ? "1px"
+                                    : "0px",
+                                borderColor: "border.emphasized",
+                              })} colHandle`}
                               aria-label="Drag to reorder list"
                             >
                               ⋮⋮
                             </Box>
                           </Show>
-                          <Box
-                            as="span"
-                            class={css({
-                              color: "fg.muted",
-                              display: "inline-flex",
-                              alignItems: "center",
-                            })}
-                          >
-                            <ListIcon />
-                          </Box>
                           <Box as="span">{col.title}</Box>
                         </Box>
 
                         <Show when={!isLoose(col.listId)}>
-                          <HStack gap="1">
+                          <HStack gap="1" class="colActions">
                             <IconButton
-                              size="sm"
+                              size="2xs"
                               variant="plain"
                               aria-label="Edit list"
                               onClick={() => {
@@ -752,7 +829,7 @@ export default function ProjectRoute() {
                               <PencilIcon />
                             </IconButton>
                             <IconButton
-                              size="sm"
+                              size="2xs"
                               variant="plain"
                               aria-label="Delete list"
                               onClick={async () => {
@@ -803,30 +880,13 @@ export default function ProjectRoute() {
                           </HStack>
                         </VStack>
                       </Show>
-                    </Card.Header>
+                    </Box>
 
-                    <Card.Body>
+                    <Box class={columnBodyClass}>
                       <VStack
                         alignItems="stretch"
                         gap="2"
-                        class={css({
-                          rounded: "md",
-                          p: "2",
-                          bg: isItemDragOverThisColumn()
-                            ? "gray.surface.bg.hover"
-                            : "transparent",
-                          outlineWidth: isItemDragOverThisColumn()
-                            ? "2px"
-                            : "0px",
-                          outlineStyle: isItemDragOverThisColumn()
-                            ? "dashed"
-                            : "solid",
-                          outlineOffset: "2px",
-                          outlineColor: "border.emphasized",
-                          transitionProperty:
-                            "background-color, outline-color, outline-offset",
-                          transitionDuration: "150ms",
-                        })}
+                        class={itemsStackClass(isItemDragOverThisColumn())}
                         onDragOver={(e) => {
                           if (!draggingItemId()) return;
                           e.preventDefault();
@@ -866,28 +926,10 @@ export default function ProjectRoute() {
                           <For each={columnItems()}>
                             {(it) => (
                               <Box
-                                class={css({
-                                  position: "relative",
-                                  borderWidth: "1px",
-                                  borderColor: "border",
-                                  rounded: "md",
-                                  px: "3",
-                                  py: "2",
-                                  outlineWidth:
-                                    dragOverItemId() === it.id ? "2px" : "0px",
-                                  outlineColor: "border.emphasized",
-                                  outlineOffset:
-                                    dragOverItemId() === it.id ? "2px" : "0px",
-                                  bg:
-                                    dragOverItemId() === it.id
-                                      ? "gray.surface.bg.hover"
-                                      : "transparent",
-                                  transitionProperty:
-                                    "outline-color, outline-offset, background-color",
-                                  transitionDuration: "150ms",
-                                  opacity:
-                                    draggingItemId() === it.id ? 0.35 : 1,
-                                })}
+                                class={itemRowClass(
+                                  dragOverItemId() === it.id,
+                                  draggingItemId() === it.id
+                                )}
                                 onDragOver={(e) => {
                                   if (!draggingItemId()) return;
                                   e.preventDefault();
@@ -959,16 +1001,15 @@ export default function ProjectRoute() {
                                         setDragOverItemId(null);
                                         setDragOverColumnId(null);
                                       }}
-                                      class={css({
+                                      class={`${css({
                                         cursor: "grab",
-                                        borderWidth: "1px",
-                                        borderColor: "border",
                                         rounded: "sm",
                                         px: "1",
                                         color: "fg.muted",
                                         fontSize: "sm",
                                         userSelect: "none",
-                                      })}
+                                        lineHeight: "1",
+                                      })} itemHandle`}
                                       aria-label="Drag to move item"
                                     >
                                       ⋮⋮
@@ -978,9 +1019,9 @@ export default function ProjectRoute() {
                                     </Box>
                                   </HStack>
 
-                                  <HStack gap="1">
+                                  <HStack gap="1" class="itemActions">
                                     <IconButton
-                                      size="sm"
+                                      size="2xs"
                                       variant="plain"
                                       aria-label="Edit item"
                                       onClick={() => startEditItem(it)}
@@ -988,7 +1029,7 @@ export default function ProjectRoute() {
                                       <PencilIcon />
                                     </IconButton>
                                     <IconButton
-                                      size="sm"
+                                      size="2xs"
                                       variant="plain"
                                       aria-label="Delete item"
                                       onClick={async () => {
@@ -1051,7 +1092,7 @@ export default function ProjectRoute() {
                             when={addingItemListId() === col.listId}
                             fallback={
                               <Button
-                                size="sm"
+                                size="xs"
                                 variant="outline"
                                 onClick={() => openAddItem(col.listId)}
                               >
@@ -1095,8 +1136,8 @@ export default function ProjectRoute() {
                           </Show>
                         </Box>
                       </VStack>
-                    </Card.Body>
-                  </Card.Root>
+                    </Box>
+                  </Box>
                 );
               }}
             </For>
