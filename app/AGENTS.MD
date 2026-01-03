@@ -13,9 +13,22 @@
   - **Writes**: server actions
   - **Avoid**: `fetch()` in UI components for app data, and adding React Query/SWR/etc.
 
+- **Component size & composition**
+
+  - Prefer **small components** that do one thing well; keep files **~200 lines** when feasible.
+  - If a component/file is trending **beyond ~200 lines**, plan to **split early** (before it becomes a 1000+ line file).
+  - Split into **separate files** when possible (subcomponents, hooks, helpers, types).
+  - Avoid excessive **prop drilling**; it’s OK to create a **shared context** (or a small store) when multiple siblings/levels need the same state.
+
 - **UI + styling**
+
   - Prefer `~/components/ui/*` (Park UI-style wrappers) over direct Ark UI usage in routes.
   - Prefer Panda (`css`, `styled-system/jsx`, `recipes`) over ad-hoc CSS.
+
+- **Routes are routes**
+
+  - Avoid creating reusable UI components under `app/src/routes/` — files/folders there define real routes.
+  - Keep route modules focused on routing + data + page composition; move reusable UI to `app/src/components/` (or `~/components/*`).
 
 ---
 
@@ -85,6 +98,7 @@ Preferred approach:
   - Build it as a wrapper in `app/src/components/ui/<name>/`
   - Base it on Ark UI primitives/contexts
   - Style via Panda (`css`/`jsx`) and add/extend recipes when variants matter
+- If a route/component is getting large, extract UI into `~/components/*` and shared state into a context/store to keep routes readable.
 
 Styling rules of thumb:
 
