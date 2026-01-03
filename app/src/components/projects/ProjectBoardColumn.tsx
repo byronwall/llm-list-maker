@@ -7,7 +7,10 @@ import { IconButton } from "~/components/ui/icon-button";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { isLoose } from "~/lib/projects/board-utils";
-import { useProjectBoard, type ProjectBoardController } from "./project-board-context";
+import {
+  useProjectBoard,
+  type ProjectBoardController,
+} from "./project-board-context";
 import {
   columnBodyClass,
   columnHeaderClass,
@@ -30,7 +33,8 @@ export function ProjectBoardColumn(props: { col: Column }) {
   const isColumnDragOver = () => pb.dragOverColumnId() === props.col.key;
   const isListDragOver = () =>
     !!pb.draggingListId() && pb.dragOverListId() === props.col.listId;
-  const isItemDragOverThisColumn = () => !!pb.draggingItemId() && isColumnDragOver();
+  const isItemDragOverThisColumn = () =>
+    !!pb.draggingItemId() && isColumnDragOver();
 
   return (
     <Box class={columnShellClass(isColumnDragOver() || isListDragOver())}>
@@ -50,7 +54,10 @@ export function ProjectBoardColumn(props: { col: Column }) {
                 as="span"
                 draggable
                 onDragStart={(e) => {
-                  e.dataTransfer?.setData("text/plain", String(props.col.listId));
+                  e.dataTransfer?.setData(
+                    "text/plain",
+                    String(props.col.listId)
+                  );
                   pb.applyMinimalDragImage(e);
                   pb.setDraggingListId(props.col.listId);
                 }}
@@ -120,7 +127,13 @@ export function ProjectBoardColumn(props: { col: Column }) {
           </Show>
         </HStack>
 
-        <Show when={pb.editingListId() === props.col.listId}>
+        <Show
+          when={
+            !isLoose(props.col.listId) &&
+            pb.editingListId() != null &&
+            pb.editingListId() === props.col.listId
+          }
+        >
           <VStack alignItems="stretch" gap="2" mt="3">
             <Input
               value={pb.editingListTitle()}
@@ -135,7 +148,11 @@ export function ProjectBoardColumn(props: { col: Column }) {
               <Button size="sm" variant="outline" onClick={pb.cancelEditList}>
                 Cancel
               </Button>
-              <Button size="sm" variant="solid" onClick={() => void pb.saveEditList()}>
+              <Button
+                size="sm"
+                variant="solid"
+                onClick={() => void pb.saveEditList()}
+              >
                 Save
               </Button>
             </HStack>
@@ -186,5 +203,3 @@ export function ProjectBoardColumn(props: { col: Column }) {
     </Box>
   );
 }
-
-

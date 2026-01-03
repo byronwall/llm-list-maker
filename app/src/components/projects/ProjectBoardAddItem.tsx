@@ -5,21 +5,26 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { useProjectBoard } from "./project-board-context";
+import { isLoose } from "~/lib/projects/board-utils";
 
 export function ProjectBoardAddItem(props: { listId: string | null }) {
   const pb = useProjectBoard();
 
+  // Treat `null` as "no active add-item form", not "open the Loose form".
+  const isOpen = () =>
+    pb.addingItemListId() != null && pb.addingItemListId() === props.listId;
+
   return (
     <Box pt="2">
       <Show
-        when={pb.addingItemListId() === props.listId}
+        when={isOpen()}
         fallback={
           <Button
             size="xs"
             variant="outline"
             onClick={() => pb.openAddItem(props.listId)}
           >
-            Add item
+            {isLoose(props.listId) ? "Add loose item" : "Add item"}
           </Button>
         }
       >
@@ -39,7 +44,11 @@ export function ProjectBoardAddItem(props: { listId: string | null }) {
             <Button size="sm" variant="outline" onClick={pb.cancelAddItem}>
               Cancel
             </Button>
-            <Button size="sm" variant="solid" onClick={() => void pb.createItemFor()}>
+            <Button
+              size="sm"
+              variant="solid"
+              onClick={() => void pb.createItemFor()}
+            >
               Add
             </Button>
           </HStack>
@@ -48,5 +57,3 @@ export function ProjectBoardAddItem(props: { listId: string | null }) {
     </Box>
   );
 }
-
-

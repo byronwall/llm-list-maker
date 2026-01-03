@@ -274,18 +274,23 @@ export function createProjectBoardController(
   });
 
   const orderedColumns = createMemo(() => {
+    const looseItems = itemsByListId().get("LOOSE") ?? [];
     const cols: {
       key: string;
       listId: string | null;
       title: string;
       description: string;
     }[] = [
-      {
-        key: "LOOSE",
-        listId: null,
-        title: "Loose",
-        description: "Unassigned items live here.",
-      },
+      ...(looseItems.length > 0
+        ? [
+            {
+              key: "LOOSE",
+              listId: null,
+              title: "Loose",
+              description: "Unassigned items live here.",
+            },
+          ]
+        : []),
       ...lists().map((l) => ({
         key: l.id,
         listId: l.id,
