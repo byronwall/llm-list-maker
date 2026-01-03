@@ -25,6 +25,7 @@ export async function suggestLists(input: {
   projectTitle: string;
   projectDescription: string;
   existingListTitles: string[];
+  userInput?: string;
 }) {
   requireApiKey();
 
@@ -46,11 +47,25 @@ export async function suggestLists(input: {
     `Existing lists: ${input.existingListTitles.join(" | ") || "(none)"}`,
   ].join("\n");
 
+  const user = normalizeTitle(input.userInput);
+
   return await generateObject({
     model: getModel(),
     schema,
     prompt: [
       baseContext,
+      "",
+      user
+        ? [
+            "User instructions (highest priority):",
+            '"""',
+            user,
+            '"""',
+            "",
+            "Heavily prioritize the user instructions above. If they conflict with the project description, follow the user instructions.",
+            "If the user provides specific list names, use them verbatim (unless they duplicate existing lists).",
+          ].join("\n")
+        : "No user instructions were provided. Use the project context only.",
       "",
       "Suggest 3-7 list columns for organizing items in this project.",
       "Lists should be simple and reusable. Avoid duplicates with existing lists.",
@@ -64,6 +79,7 @@ export async function suggestItems(input: {
   projectDescription: string;
   lists: { title: string; description: string }[];
   existingItemLabels: string[];
+  userInput?: string;
 }) {
   requireApiKey();
 
@@ -88,11 +104,26 @@ export async function suggestItems(input: {
     `Existing item labels: ${input.existingItemLabels.join(" | ") || "(none)"}`,
   ].join("\n");
 
+  const user = normalizeTitle(input.userInput);
+
   return await generateObject({
     model: getModel(),
     schema,
     prompt: [
       baseContext,
+      "",
+      user
+        ? [
+            "User instructions (highest priority):",
+            '"""',
+            user,
+            '"""',
+            "",
+            "Heavily prioritize the user instructions above. If they conflict with the project description, follow the user instructions.",
+            "If the user provides specific items, turn them into items (and do not invent unrelated ones unless asked).",
+            "If the user provides constraints (scope, audience, timeline), reflect them in the item labels/descriptions.",
+          ].join("\n")
+        : "No user instructions were provided. Use the project context only.",
       "",
       "Suggest 5-15 items to add to this board.",
       'For each item, choose listTitleOrLoose as either an existing list title, or exactly the word "Loose".',
@@ -107,6 +138,7 @@ export async function suggestReorg(input: {
   projectDescription: string;
   lists: { title: string; description: string }[];
   items: { label: string; description: string; listTitleOrLoose: string }[];
+  userInput?: string;
 }) {
   requireApiKey();
 
@@ -135,11 +167,25 @@ export async function suggestReorg(input: {
     itemLines || "(none)",
   ].join("\n");
 
+  const user = normalizeTitle(input.userInput);
+
   return await generateObject({
     model: getModel(),
     schema,
     prompt: [
       baseContext,
+      "",
+      user
+        ? [
+            "User instructions (highest priority):",
+            '"""',
+            user,
+            '"""',
+            "",
+            "Heavily prioritize the user instructions above. If they conflict with the current board organization, follow the user instructions.",
+            "If the user mentions how items should be grouped, treat that as the primary signal for moving items.",
+          ].join("\n")
+        : "No user instructions were provided. Use the project context only.",
       "",
       "Reorganize the board by proposing moves of existing items into better lists.",
       'targetListTitleOrLoose must be either an existing list title, or exactly the word "Loose".',

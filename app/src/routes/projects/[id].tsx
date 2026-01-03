@@ -5,18 +5,23 @@ import { Box, Container, HStack, Stack, VStack } from "styled-system/jsx";
 
 import { Button } from "~/components/ui/button";
 import * as Card from "~/components/ui/card";
+import * as Dialog from "~/components/ui/dialog";
 import { IconButton } from "~/components/ui/icon-button";
 import { Input } from "~/components/ui/input";
 import { Link } from "~/components/ui/link";
 import { Textarea } from "~/components/ui/textarea";
 
 import type { Item, List, ProjectBoard } from "~/lib/domain";
-import { ListIcon, PencilIcon, Trash2Icon } from "lucide-solid";
 import {
-  aiReorganizeBoard,
+  ListIcon,
+  PencilIcon,
+  Trash2Icon,
+  Wand2Icon,
+  XIcon,
+} from "lucide-solid";
+import { aiHelp } from "../../server/ai-help";
+import {
   aiReviewBoard,
-  aiSuggestItems,
-  aiSuggestLists,
   createItem,
   createList,
   deleteItem,
@@ -66,9 +71,7 @@ export default function ProjectRoute() {
   const runDeleteItem = useAction(deleteItem);
   const runMoveItem = useAction(moveItem);
 
-  const runAiSuggestLists = useAction(aiSuggestLists);
-  const runAiSuggestItems = useAction(aiSuggestItems);
-  const runAiReorg = useAction(aiReorganizeBoard);
+  const runAiHelp = useAction(aiHelp);
   const runAiReview = useAction(aiReviewBoard);
 
   // New list form
@@ -191,30 +194,28 @@ export default function ProjectRoute() {
 
   const [isAiBusy, setIsAiBusy] = createSignal(false);
 
-  const onAiSuggestLists = async () => {
-    setIsAiBusy(true);
-    try {
-      await runAiSuggestLists({ projectId: projectId() });
-      await refresh();
-    } finally {
-      setIsAiBusy(false);
-    }
-  };
+  // AI Help (modal)
+  const [isAiHelpOpen, setIsAiHelpOpen] = createSignal(false);
+  const [aiHelpUserInput, setAiHelpUserInput] = createSignal("");
+  const [aiHelpCreateLists, setAiHelpCreateLists] = createSignal(true);
+  const [aiHelpCreateItems, setAiHelpCreateItems] = createSignal(true);
+  const [aiHelpMoveItemsAround, setAiHelpMoveItemsAround] = createSignal(false);
 
-  const onAiSuggestItems = async () => {
-    setIsAiBusy(true);
-    try {
-      await runAiSuggestItems({ projectId: projectId() });
-      await refresh();
-    } finally {
-      setIsAiBusy(false);
-    }
-  };
+  const canRunAiHelp = () =>
+    aiHelpCreateLists() || aiHelpCreateItems() || aiHelpMoveItemsAround();
 
-  const onAiReorg = async () => {
+  const onRunAiHelp = async () => {
+    if (!canRunAiHelp()) return;
     setIsAiBusy(true);
     try {
-      await runAiReorg({ projectId: projectId() });
+      await runAiHelp({
+        projectId: projectId(),
+        userInput: aiHelpUserInput(),
+        createLists: aiHelpCreateLists(),
+        createItems: aiHelpCreateItems(),
+        moveItemsAround: aiHelpMoveItemsAround(),
+      });
+      setIsAiHelpOpen(false);
       await refresh();
     } finally {
       setIsAiBusy(false);
@@ -227,6 +228,7 @@ export default function ProjectRoute() {
       const result = await runAiReview({ projectId: projectId() });
       setReviewCommentary(result.commentary || null);
       setReviewQuestions(result.questions || []);
+      setIsAiHelpOpen(false);
     } finally {
       setIsAiBusy(false);
     }
@@ -362,7 +364,7 @@ export default function ProjectRoute() {
   return (
     <Container py="10" maxW="6xl">
       <VStack alignItems="stretch" gap="6">
-        <HStack justify="space-between" align="start">
+        <HStack justify="space-between" alignItems="start">
           <Stack gap="1">
             <HStack gap="3">
               <Link href="/">← Projects</Link>
@@ -409,13 +411,13 @@ export default function ProjectRoute() {
                   </VStack>
                 }
               >
-                <HStack gap="2" align="center">
+                <HStack gap="2" alignItems="center">
                   <Box class={css({ fontSize: "2xl", fontWeight: "semibold" })}>
                     {b()!.project.title}
                   </Box>
                   <IconButton
                     size="sm"
-                    variant="ghost"
+                    variant="plain"
                     aria-label="Edit project"
                     onClick={startEditProject}
                   >
@@ -433,27 +435,121 @@ export default function ProjectRoute() {
 
           <HStack gap="2" flexWrap="wrap" justify="flex-end">
             <Button
-              onClick={onAiSuggestLists}
+              onClick={() => setIsAiHelpOpen(true)}
               disabled={isAiBusy()}
-              variant="outline"
+              variant="solid"
             >
-              Suggest lists
-            </Button>
-            <Button
-              onClick={onAiSuggestItems}
-              disabled={isAiBusy()}
-              variant="outline"
-            >
-              Suggest items
-            </Button>
-            <Button onClick={onAiReorg} disabled={isAiBusy()} variant="outline">
-              Reorganize board
-            </Button>
-            <Button onClick={onAiReview} disabled={isAiBusy()} variant="solid">
-              Review board
+              <HStack gap="2" alignItems="center">
+                <Wand2Icon />
+                <Box>AI Help</Box>
+              </HStack>
             </Button>
           </HStack>
         </HStack>
+
+        <Dialog.Root
+          open={isAiHelpOpen()}
+          onOpenChange={(details: any) => setIsAiHelpOpen(!!details?.open)}
+        >
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content
+              class={css({
+                maxW: "800px",
+                "--dialog-base-margin": "24px",
+              })}
+            >
+              <Dialog.Header>
+                <Dialog.Title>AI Help</Dialog.Title>
+                <Dialog.Description>
+                  Add optional instructions below. If you provide input, it will
+                  be treated as the highest priority.
+                </Dialog.Description>
+              </Dialog.Header>
+
+              <Dialog.CloseTrigger aria-label="Close AI Help">
+                <XIcon />
+              </Dialog.CloseTrigger>
+
+              <Dialog.Body>
+                <VStack alignItems="stretch" gap="3">
+                  <Textarea
+                    value={aiHelpUserInput()}
+                    onInput={(e) => setAiHelpUserInput(e.currentTarget.value)}
+                    placeholder="What do you want the AI to do? (e.g. 'Create 4 lists: Backlog, Doing, Blocked, Done. Add 10 items for a mobile MVP. Move anything that looks misplaced.')"
+                    class={css({ minH: "220px", resize: "vertical" })}
+                  />
+
+                  <VStack alignItems="stretch" gap="2">
+                    <Box class={css({ fontWeight: "semibold" })}>Options</Box>
+                    <HStack gap="2" flexWrap="wrap">
+                      <Button
+                        type="button"
+                        variant={aiHelpCreateLists() ? "solid" : "outline"}
+                        aria-pressed={aiHelpCreateLists()}
+                        onClick={() => setAiHelpCreateLists((v) => !v)}
+                      >
+                        Create lists
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={aiHelpCreateItems() ? "solid" : "outline"}
+                        aria-pressed={aiHelpCreateItems()}
+                        onClick={() => setAiHelpCreateItems((v) => !v)}
+                      >
+                        Create items
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={aiHelpMoveItemsAround() ? "solid" : "outline"}
+                        aria-pressed={aiHelpMoveItemsAround()}
+                        onClick={() => setAiHelpMoveItemsAround((v) => !v)}
+                      >
+                        Move items around
+                      </Button>
+                    </HStack>
+                  </VStack>
+                </VStack>
+              </Dialog.Body>
+
+              <Dialog.Footer>
+                <HStack
+                  justify="space-between"
+                  w="full"
+                  gap="2"
+                  flexWrap="wrap"
+                >
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onAiReview}
+                    disabled={isAiBusy()}
+                  >
+                    Review board
+                  </Button>
+                  <HStack gap="2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsAiHelpOpen(false)}
+                      disabled={isAiBusy()}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="solid"
+                      onClick={onRunAiHelp}
+                      disabled={isAiBusy() || !canRunAiHelp()}
+                    >
+                      Apply
+                    </Button>
+                  </HStack>
+                </HStack>
+              </Dialog.Footer>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Dialog.Root>
 
         <Card.Root>
           <Card.Header>
@@ -561,7 +657,11 @@ export default function ProjectRoute() {
                     })}
                   >
                     <Card.Header>
-                      <HStack justify="space-between" align="start" gap="2">
+                      <HStack
+                        justify="space-between"
+                        alignItems="start"
+                        gap="2"
+                      >
                         <Box
                           class={css({
                             fontWeight: "semibold",
@@ -642,7 +742,7 @@ export default function ProjectRoute() {
                           <HStack gap="1">
                             <IconButton
                               size="sm"
-                              variant="ghost"
+                              variant="plain"
                               aria-label="Edit list"
                               onClick={() => {
                                 const list = listForColumn();
@@ -653,7 +753,7 @@ export default function ProjectRoute() {
                             </IconButton>
                             <IconButton
                               size="sm"
-                              variant="ghost"
+                              variant="plain"
                               aria-label="Delete list"
                               onClick={async () => {
                                 if (!col.listId) return;
@@ -839,10 +939,10 @@ export default function ProjectRoute() {
                                 </Show>
                                 <HStack
                                   justify="space-between"
-                                  align="start"
+                                  alignItems="start"
                                   gap="2"
                                 >
-                                  <HStack gap="2" align="center">
+                                  <HStack gap="2" alignItems="center">
                                     <Box
                                       as="span"
                                       draggable
@@ -881,7 +981,7 @@ export default function ProjectRoute() {
                                   <HStack gap="1">
                                     <IconButton
                                       size="sm"
-                                      variant="ghost"
+                                      variant="plain"
                                       aria-label="Edit item"
                                       onClick={() => startEditItem(it)}
                                     >
@@ -889,7 +989,7 @@ export default function ProjectRoute() {
                                     </IconButton>
                                     <IconButton
                                       size="sm"
-                                      variant="ghost"
+                                      variant="plain"
                                       aria-label="Delete item"
                                       onClick={async () => {
                                         await runDeleteItem({

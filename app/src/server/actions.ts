@@ -1,6 +1,7 @@
 import { action } from "@solidjs/router";
 
 import { reviewBoard, suggestItems, suggestLists, suggestReorg } from "./ai";
+export { aiHelp } from "./ai-help";
 import { db } from "./db";
 
 export const createProject = action(async (input: { title: string; description: string }) => {
