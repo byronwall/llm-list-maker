@@ -6,6 +6,11 @@ export interface Project {
   updatedAt: string;
 }
 
+export interface ProjectSummary extends Project {
+  listCount: number;
+  itemCount: number;
+}
+
 export interface List {
   id: string;
   projectId: string;
@@ -32,4 +37,3 @@ export interface ProjectBoard {
   lists: List[];
   items: Item[];
 }
-

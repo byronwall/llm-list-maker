@@ -1,7 +1,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { Item, List, Project, ProjectBoard } from "~/lib/domain";
+import type {
+  Item,
+  List,
+  Project,
+  ProjectBoard,
+  ProjectSummary,
+} from "~/lib/domain";
 
 type DbData = {
   projects: Project[];
@@ -66,6 +72,34 @@ class JsonDb {
     return [...data.projects].sort((a, b) =>
       b.updatedAt.localeCompare(a.updatedAt)
     );
+  }
+
+  async listProjectSummaries(): Promise<ProjectSummary[]> {
+    const data = await this.readData();
+
+    const listCountByProjectId = new Map<string, number>();
+    for (const l of data.lists) {
+      listCountByProjectId.set(
+        l.projectId,
+        (listCountByProjectId.get(l.projectId) ?? 0) + 1
+      );
+    }
+
+    const itemCountByProjectId = new Map<string, number>();
+    for (const it of data.items) {
+      itemCountByProjectId.set(
+        it.projectId,
+        (itemCountByProjectId.get(it.projectId) ?? 0) + 1
+      );
+    }
+
+    return [...data.projects]
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .map((p) => ({
+        ...p,
+        listCount: listCountByProjectId.get(p.id) ?? 0,
+        itemCount: itemCountByProjectId.get(p.id) ?? 0,
+      }));
   }
 
   async getProject(projectId: string): Promise<Project | null> {
