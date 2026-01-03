@@ -5,7 +5,7 @@ import { z } from "zod";
 function getModel() {
   // OpenAI-compatible via Vercel AI SDK's OpenAI provider.
   // Requires: OPENAI_API_KEY
-  const modelId = process.env.AI_MODEL || "gpt-4o-mini";
+  const modelId = process.env.AI_MODEL || "gpt-5.2";
   return openai(modelId);
 }
 

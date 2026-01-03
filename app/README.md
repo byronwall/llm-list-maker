@@ -42,7 +42,7 @@ pnpm -C app install
 2. Create `app/.env` (see `app/.env.example`) and set:
 
 - `OPENAI_API_KEY`
-- `AI_MODEL` (optional, defaults to `gpt-4o-mini`)
+- `AI_MODEL` (optional, defaults to `gpt-5.2`)
 
 ## Building
 
