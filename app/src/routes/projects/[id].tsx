@@ -9,10 +9,17 @@ import * as Dialog from "~/components/ui/dialog";
 import { IconButton } from "~/components/ui/icon-button";
 import { Input } from "~/components/ui/input";
 import { Link } from "~/components/ui/link";
+import * as Popover from "~/components/ui/popover";
 import { Textarea } from "~/components/ui/textarea";
 
 import type { Item, List, ProjectBoard } from "~/lib/domain";
-import { PencilIcon, Trash2Icon, Wand2Icon, XIcon } from "lucide-solid";
+import {
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+  Wand2Icon,
+  XIcon,
+} from "lucide-solid";
 import { aiHelp } from "../../server/ai-help";
 import {
   aiReviewBoard,
@@ -71,6 +78,13 @@ export default function ProjectRoute() {
   // New list form
   let newListTitleEl!: HTMLInputElement;
   let newListDescEl!: HTMLTextAreaElement;
+  const [isCreateListOpen, setIsCreateListOpen] = createSignal(false);
+
+  createEffect(() => {
+    if (!isCreateListOpen()) return;
+    // Popover content mounts lazily; focus on the next microtask.
+    queueMicrotask(() => newListTitleEl?.focus());
+  });
 
   const onCreateList = async (e: Event) => {
     e.preventDefault();
@@ -80,6 +94,7 @@ export default function ProjectRoute() {
     await runCreateList({ projectId: projectId(), title, description });
     newListTitleEl.value = "";
     newListDescEl.value = "";
+    setIsCreateListOpen(false);
     await refresh();
   };
 
@@ -550,6 +565,70 @@ export default function ProjectRoute() {
           </Stack>
 
           <HStack gap="2" flexWrap="wrap" justify="flex-end">
+            <Popover.Root
+              open={isCreateListOpen()}
+              onOpenChange={(details: any) =>
+                setIsCreateListOpen(!!details?.open)
+              }
+            >
+              <Popover.Trigger
+                asChild={(triggerProps) => (
+                  <Button size="sm" variant="outline" {...triggerProps}>
+                    <HStack gap="2" alignItems="center">
+                      <PlusIcon />
+                      <Box>Add list</Box>
+                    </HStack>
+                  </Button>
+                )}
+              />
+              <Popover.Positioner>
+                <Popover.Content
+                  class={css({
+                    width: "min(420px, calc(100vw - 32px))",
+                  })}
+                >
+                  <Popover.Header>
+                    <Popover.Title>New list</Popover.Title>
+                    <Popover.Description>
+                      Add a column to organize items.
+                    </Popover.Description>
+                  </Popover.Header>
+
+                  <Popover.Body>
+                    <form onSubmit={onCreateList}>
+                      <VStack alignItems="stretch" gap="3">
+                        <Input
+                          ref={newListTitleEl}
+                          placeholder="List title (e.g. Doing)"
+                        />
+                        <Textarea
+                          ref={newListDescEl}
+                          placeholder="Description (optional)"
+                          class={css({ minH: "80px" })}
+                        />
+                        <HStack justify="flex-end" gap="2">
+                          <Popover.CloseTrigger
+                            asChild={(closeProps) => (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                {...closeProps}
+                              >
+                                Cancel
+                              </Button>
+                            )}
+                          />
+                          <Button size="sm" type="submit" variant="solid">
+                            Add list
+                          </Button>
+                        </HStack>
+                      </VStack>
+                    </form>
+                  </Popover.Body>
+                </Popover.Content>
+              </Popover.Positioner>
+            </Popover.Root>
+
             <Button
               onClick={() => setIsAiHelpOpen(true)}
               disabled={isAiBusy()}
@@ -666,33 +745,6 @@ export default function ProjectRoute() {
             </Dialog.Content>
           </Dialog.Positioner>
         </Dialog.Root>
-
-        <Card.Root>
-          <Card.Header class={compactCardHeaderClass}>
-            <Card.Title>Add a list</Card.Title>
-            <Card.Description>Lists are columns on the board.</Card.Description>
-          </Card.Header>
-          <Card.Body class={compactCardBodyClass}>
-            <form onSubmit={onCreateList}>
-              <VStack alignItems="stretch" gap="3">
-                <Input
-                  ref={newListTitleEl}
-                  placeholder="List title (e.g. Doing)"
-                />
-                <Textarea
-                  ref={newListDescEl}
-                  placeholder="Description (optional)"
-                  class={css({ minH: "80px" })}
-                />
-                <HStack justify="flex-end">
-                  <Button type="submit" variant="solid">
-                    Add list
-                  </Button>
-                </HStack>
-              </VStack>
-            </form>
-          </Card.Body>
-        </Card.Root>
 
         <Show when={reviewCommentary() || reviewQuestions().length > 0}>
           <Card.Root>
