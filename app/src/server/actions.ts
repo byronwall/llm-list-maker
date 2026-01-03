@@ -22,6 +22,11 @@ export const updateProject = action(
   "project:update",
 );
 
+export const deleteProject = action(async (input: { projectId: string }) => {
+  "use server";
+  await db().deleteProject(input);
+}, "project:delete");
+
 export const createList = action(async (input: { projectId: string; title: string; description: string }) => {
   "use server";
   return await db().createList(input);

@@ -12,6 +12,7 @@ import {
   aiReviewBoard,
   createItem,
   createList,
+  deleteProject,
   deleteItem,
   deleteList,
   moveItem,
@@ -43,6 +44,7 @@ export function createProjectBoardController(
   const runReorderLists = useAction(reorderLists);
 
   const runUpdateProject = useAction(updateProject);
+  const runDeleteProject = useAction(deleteProject);
 
   const runCreateItem = useAction(createItem);
   const runUpdateItem = useAction(updateItem);
@@ -93,6 +95,10 @@ export function createProjectBoardController(
     });
     setIsEditingProject(false);
     await refresh();
+  };
+
+  const deleteProjectFn = async () => {
+    await runDeleteProject({ projectId: projectId() });
   };
 
   // List editing
@@ -354,6 +360,7 @@ export function createProjectBoardController(
     projectId,
     board: b,
     refresh,
+    deleteProject: deleteProjectFn,
 
     isEditingProject,
     editingProjectTitle,

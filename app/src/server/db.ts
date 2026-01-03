@@ -1,4 +1,11 @@
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -56,7 +63,9 @@ class JsonDb {
     return path.join(getProjectsDirPath(), `${projectId}.json`);
   }
 
-  private async readProjectFile(projectId: string): Promise<ProjectFileData | null> {
+  private async readProjectFile(
+    projectId: string
+  ): Promise<ProjectFileData | null> {
     const filePath = this.getProjectFilePath(projectId);
     try {
       const raw = await readFile(filePath, "utf8");
@@ -68,7 +77,10 @@ class JsonDb {
     }
   }
 
-  private async writeProjectFile(projectId: string, data: ProjectFileData): Promise<void> {
+  private async writeProjectFile(
+    projectId: string,
+    data: ProjectFileData
+  ): Promise<void> {
     const filePath = this.getProjectFilePath(projectId);
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, JSON.stringify(data, null, 2) + "\n", "utf8");
@@ -90,7 +102,10 @@ class JsonDb {
     return result;
   }
 
-  private coerceProjectFile(input: any, projectIdHint?: string): ProjectFileData {
+  private coerceProjectFile(
+    input: any,
+    projectIdHint?: string
+  ): ProjectFileData {
     const now = nowIso();
     const projectId = String(input?.project?.id ?? projectIdHint ?? id());
 
@@ -99,7 +114,9 @@ class JsonDb {
       title: String(input?.project?.title ?? "").trim(),
       description: String(input?.project?.description ?? ""),
       createdAt: String(input?.project?.createdAt ?? now),
-      updatedAt: String(input?.project?.updatedAt ?? input?.project?.createdAt ?? now),
+      updatedAt: String(
+        input?.project?.updatedAt ?? input?.project?.createdAt ?? now
+      ),
     };
     if (!project.title) project.title = "Untitled project";
 
@@ -183,7 +200,9 @@ class JsonDb {
           title: String((p as any)?.title ?? "Untitled project"),
           description: String((p as any)?.description ?? ""),
           createdAt: String((p as any)?.createdAt ?? nowIso()),
-          updatedAt: String((p as any)?.updatedAt ?? (p as any)?.createdAt ?? nowIso()),
+          updatedAt: String(
+            (p as any)?.updatedAt ?? (p as any)?.createdAt ?? nowIso()
+          ),
         },
         lists: lists
           .filter((l) => String((l as any)?.projectId ?? "") === projectId)
@@ -211,13 +230,18 @@ class JsonDb {
 
     // Leave a backup of the old file so data is preserved.
     try {
-      await rename(legacyPath, path.join(path.dirname(legacyPath), "db.legacy.json"));
+      await rename(
+        legacyPath,
+        path.join(path.dirname(legacyPath), "db.legacy.json")
+      );
     } catch {
       // If rename fails (e.g. backup exists), keep the old file as-is.
     }
   }
 
-  async importProjectJsonText(jsonText: string): Promise<{ importedProjectIds: string[] }> {
+  async importProjectJsonText(
+    jsonText: string
+  ): Promise<{ importedProjectIds: string[] }> {
     await this.ensureInitialized();
     const parsed = JSON.parse(jsonText) as any;
 
@@ -233,8 +257,14 @@ class JsonDb {
       if (existing) {
         finalProjectId = id();
         coerced.project.id = finalProjectId;
-        coerced.lists = coerced.lists.map((l) => ({ ...l, projectId: finalProjectId }));
-        coerced.items = coerced.items.map((it) => ({ ...it, projectId: finalProjectId }));
+        coerced.lists = coerced.lists.map((l) => ({
+          ...l,
+          projectId: finalProjectId,
+        }));
+        coerced.items = coerced.items.map((it) => ({
+          ...it,
+          projectId: finalProjectId,
+        }));
       }
 
       await this.writeProjectFile(finalProjectId, coerced);
@@ -254,7 +284,9 @@ class JsonDb {
             title: String((p as any)?.title ?? "Untitled project"),
             description: String((p as any)?.description ?? ""),
             createdAt: String((p as any)?.createdAt ?? nowIso()),
-            updatedAt: String((p as any)?.updatedAt ?? (p as any)?.createdAt ?? nowIso()),
+            updatedAt: String(
+              (p as any)?.updatedAt ?? (p as any)?.createdAt ?? nowIso()
+            ),
           },
           lists: lists
             .filter((l) => String((l as any)?.projectId ?? "") === projectId)
@@ -286,7 +318,9 @@ class JsonDb {
         await importManyLegacy(parsed as LegacyDbData);
         return;
       }
-      throw new Error("Unsupported JSON format. Expected a project JSON or legacy db JSON.");
+      throw new Error(
+        "Unsupported JSON format. Expected a project JSON or legacy db JSON."
+      );
     });
 
     await this.writeQueue;
@@ -371,6 +405,21 @@ class JsonDb {
     });
   }
 
+  async deleteProject(input: { projectId: string }): Promise<void> {
+    // Serialize deletes via the write queue to avoid racing with other writes.
+    this.writeQueue = this.writeQueue.then(async () => {
+      await this.ensureInitialized();
+      const filePath = this.getProjectFilePath(input.projectId);
+      try {
+        await unlink(filePath);
+      } catch (err: any) {
+        if (err?.code === "ENOENT") throw new Error("Project not found");
+        throw err;
+      }
+    });
+    await this.writeQueue;
+  }
+
   async getProjectBoard(projectId: string): Promise<ProjectBoard> {
     await this.ensureInitialized();
     const board = await this.readProjectFile(projectId);
@@ -407,11 +456,7 @@ class JsonDb {
     return this.mutateProject(input.projectId, (data) => {
       const project = data.project;
       const createdAt = nowIso();
-      const order =
-        Math.max(
-          -1,
-          ...data.lists.map((l) => l.order)
-        ) + 1;
+      const order = Math.max(-1, ...data.lists.map((l) => l.order)) + 1;
       const list: List = {
         id: id(),
         projectId: input.projectId,
@@ -516,7 +561,9 @@ class JsonDb {
       const order =
         Math.max(
           -1,
-          ...data.items.filter((i) => i.listId === input.listId).map((i) => i.order)
+          ...data.items
+            .filter((i) => i.listId === input.listId)
+            .map((i) => i.order)
         ) + 1;
       const item: Item = {
         id: id(),

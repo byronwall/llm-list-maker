@@ -6,6 +6,9 @@ export type ProjectBoardController = {
   board: Accessor<ProjectBoard | undefined>;
   refresh: () => Promise<void>;
 
+  // Project lifecycle
+  deleteProject: () => Promise<void>;
+
   // Project editing
   isEditingProject: Accessor<boolean>;
   editingProjectTitle: Accessor<string>;

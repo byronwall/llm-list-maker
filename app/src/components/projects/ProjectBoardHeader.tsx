@@ -1,17 +1,35 @@
 import { Box, HStack, Stack, VStack } from "styled-system/jsx";
 import { css } from "styled-system/css";
-import { Show } from "solid-js";
+import { Show, createSignal } from "solid-js";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { Input } from "~/components/ui/input";
 import { Link } from "~/components/ui/link";
 import { Textarea } from "~/components/ui/textarea";
-import { DownloadIcon, PencilIcon, Wand2Icon } from "lucide-solid";
+import * as Dialog from "~/components/ui/dialog";
+import { DownloadIcon, PencilIcon, Trash2Icon, Wand2Icon } from "lucide-solid";
 import { useProjectBoard } from "./project-board-context";
 import { CreateListPopover } from "./CreateListPopover";
 
 export function ProjectBoardHeader() {
   const pb = useProjectBoard();
+  const [isDeleteOpen, setIsDeleteOpen] = createSignal(false);
+  const [deleteError, setDeleteError] = createSignal<string | null>(null);
+  const [isDeleting, setIsDeleting] = createSignal(false);
+
+  const onConfirmDelete = async () => {
+    setDeleteError(null);
+    setIsDeleting(true);
+    try {
+      await pb.deleteProject();
+      // Navigate back to home (full refresh keeps query caches consistent).
+      window.location.href = "/";
+    } catch (err: any) {
+      setDeleteError(String(err?.message ?? err ?? "Failed to delete project"));
+      setIsDeleting(false);
+    }
+  };
+
   const onDownloadJson = () => {
     const board = pb.board();
     if (!board) return;
@@ -126,6 +144,90 @@ export function ProjectBoardHeader() {
             <Box>AI Help</Box>
           </HStack>
         </Button>
+
+        <Dialog.Root
+          open={isDeleteOpen()}
+          onOpenChange={(details: any) => {
+            setIsDeleteOpen(!!details?.open);
+            if (!details?.open) setDeleteError(null);
+          }}
+        >
+          <Dialog.Trigger
+            asChild={(triggerProps) => (
+              <Button
+                {...triggerProps}
+                variant="outline"
+                colorPalette="red"
+                disabled={!pb.board() || pb.isAiBusy() || pb.isEditingProject()}
+              >
+                <HStack gap="2" alignItems="center">
+                  <Trash2Icon />
+                  <Box>Delete</Box>
+                </HStack>
+              </Button>
+            )}
+          />
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content
+              class={css({
+                maxW: "560px",
+                "--dialog-base-margin": "24px",
+              })}
+            >
+              <Dialog.Header>
+                <Dialog.Title>Delete project</Dialog.Title>
+                <Dialog.Description>
+                  This will permanently delete{" "}
+                  <Box as="span" class={css({ fontWeight: "semibold" })}>
+                    {pb.board()?.project.title ?? "this project"}
+                  </Box>{" "}
+                  and all its lists/items.
+                </Dialog.Description>
+              </Dialog.Header>
+
+              <Dialog.Body>
+                <Show when={deleteError()}>
+                  <Box
+                    class={css({
+                      color: "red.surface.fg",
+                      bg: "red.surface.bg",
+                      borderWidth: "1px",
+                      borderColor: "red.surface.border",
+                      rounded: "lg",
+                      px: "3",
+                      py: "2",
+                      fontSize: "sm",
+                    })}
+                  >
+                    {deleteError()}
+                  </Box>
+                </Show>
+              </Dialog.Body>
+
+              <Dialog.Footer>
+                <HStack justify="flex-end" w="full" gap="2">
+                  <Button
+                    variant="outline"
+                    disabled={isDeleting()}
+                    onClick={() => setIsDeleteOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="solid"
+                    colorPalette="red"
+                    loading={isDeleting()}
+                    loadingText="Deleting…"
+                    onClick={() => void onConfirmDelete()}
+                  >
+                    Delete project
+                  </Button>
+                </HStack>
+              </Dialog.Footer>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Dialog.Root>
       </HStack>
     </HStack>
   );
