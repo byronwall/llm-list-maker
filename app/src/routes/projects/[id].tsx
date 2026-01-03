@@ -5,12 +5,13 @@ import { Box, Container, HStack, Stack, VStack } from "styled-system/jsx";
 
 import { Button } from "~/components/ui/button";
 import * as Card from "~/components/ui/card";
-import * as HoverCard from "~/components/ui/hover-card";
+import { IconButton } from "~/components/ui/icon-button";
 import { Input } from "~/components/ui/input";
 import { Link } from "~/components/ui/link";
 import { Textarea } from "~/components/ui/textarea";
 
 import type { Item, List, ProjectBoard } from "~/lib/domain";
+import { ListIcon, PencilIcon, Trash2Icon } from "lucide-solid";
 import {
   aiReorganizeBoard,
   aiReviewBoard,
@@ -22,6 +23,7 @@ import {
   deleteList,
   moveItem,
   reorderLists,
+  updateProject,
   updateItem,
   updateList,
 } from "~/server/actions";
@@ -56,6 +58,8 @@ export default function ProjectRoute() {
   const runUpdateList = useAction(updateList);
   const runDeleteList = useAction(deleteList);
   const runReorderLists = useAction(reorderLists);
+
+  const runUpdateProject = useAction(updateProject);
 
   const runCreateItem = useAction(createItem);
   const runUpdateItem = useAction(updateItem);
@@ -105,14 +109,19 @@ export default function ProjectRoute() {
     await runUpdateList({
       projectId: projectId(),
       listId,
-      patch: { title: editingListTitle().trim(), description: editingListDesc().trim() },
+      patch: {
+        title: editingListTitle().trim(),
+        description: editingListDesc().trim(),
+      },
     });
     cancelEditList();
     await refresh();
   };
 
   // New item form (shared across columns)
-  const [addingItemListId, setAddingItemListId] = createSignal<string | null>(null);
+  const [addingItemListId, setAddingItemListId] = createSignal<string | null>(
+    null
+  );
   const [newItemLabel, setNewItemLabel] = createSignal("");
   const [newItemDesc, setNewItemDesc] = createSignal("");
 
@@ -132,7 +141,12 @@ export default function ProjectRoute() {
     const label = newItemLabel().trim();
     const description = newItemDesc().trim();
     if (!label) return;
-    await runCreateItem({ projectId: projectId(), listId: addingItemListId(), label, description });
+    await runCreateItem({
+      projectId: projectId(),
+      listId: addingItemListId(),
+      label,
+      description,
+    });
     cancelAddItem();
     await refresh();
   };
@@ -160,14 +174,19 @@ export default function ProjectRoute() {
     await runUpdateItem({
       projectId: projectId(),
       itemId,
-      patch: { label: editingItemLabel().trim(), description: editingItemDesc().trim() },
+      patch: {
+        label: editingItemLabel().trim(),
+        description: editingItemDesc().trim(),
+      },
     });
     cancelEditItem();
     await refresh();
   };
 
   // Review output
-  const [reviewCommentary, setReviewCommentary] = createSignal<string | null>(null);
+  const [reviewCommentary, setReviewCommentary] = createSignal<string | null>(
+    null
+  );
   const [reviewQuestions, setReviewQuestions] = createSignal<string[]>([]);
 
   const [isAiBusy, setIsAiBusy] = createSignal(false);
@@ -216,6 +235,44 @@ export default function ProjectRoute() {
   const lists = () => b()?.lists ?? [];
   const items = () => b()?.items ?? [];
 
+  // Project editing
+  const [isEditingProject, setIsEditingProject] = createSignal(false);
+  const [editingProjectTitle, setEditingProjectTitle] = createSignal("");
+  const [editingProjectDesc, setEditingProjectDesc] = createSignal("");
+
+  createEffect(() => {
+    if (!b()) return;
+    if (isEditingProject()) return;
+    setEditingProjectTitle(b()!.project.title);
+    setEditingProjectDesc(b()!.project.description ?? "");
+  });
+
+  const startEditProject = () => {
+    if (!b()) return;
+    setEditingProjectTitle(b()!.project.title);
+    setEditingProjectDesc(b()!.project.description ?? "");
+    setIsEditingProject(true);
+  };
+
+  const cancelEditProject = () => {
+    setIsEditingProject(false);
+    if (!b()) return;
+    setEditingProjectTitle(b()!.project.title);
+    setEditingProjectDesc(b()!.project.description ?? "");
+  };
+
+  const saveEditProject = async () => {
+    await runUpdateProject({
+      projectId: projectId(),
+      patch: {
+        title: editingProjectTitle().trim(),
+        description: editingProjectDesc().trim(),
+      },
+    });
+    setIsEditingProject(false);
+    await refresh();
+  };
+
   const itemsByListId = createMemo(() => {
     const map = new Map<string, Item[]>();
     for (const it of items()) {
@@ -231,9 +288,24 @@ export default function ProjectRoute() {
   });
 
   const orderedColumns = createMemo(() => {
-    const cols: { key: string; listId: string | null; title: string; description: string }[] = [
-      { key: "LOOSE", listId: null, title: "Loose", description: "Unassigned items live here." },
-      ...lists().map((l) => ({ key: l.id, listId: l.id, title: l.title, description: l.description })),
+    const cols: {
+      key: string;
+      listId: string | null;
+      title: string;
+      description: string;
+    }[] = [
+      {
+        key: "LOOSE",
+        listId: null,
+        title: "Loose",
+        description: "Unassigned items live here.",
+      },
+      ...lists().map((l) => ({
+        key: l.id,
+        listId: l.id,
+        title: l.title,
+        description: l.description,
+      })),
     ];
     return cols;
   });
@@ -241,12 +313,34 @@ export default function ProjectRoute() {
   // Drag/drop state (HTML5 DnD)
   const [draggingItemId, setDraggingItemId] = createSignal<string | null>(null);
   const [dragOverItemId, setDragOverItemId] = createSignal<string | null>(null);
-  const [dragOverColumnId, setDragOverColumnId] = createSignal<string | null>(null);
+  const [dragOverColumnId, setDragOverColumnId] = createSignal<string | null>(
+    null
+  );
 
   const [draggingListId, setDraggingListId] = createSignal<string | null>(null);
   const [dragOverListId, setDragOverListId] = createSignal<string | null>(null);
 
-  const moveItemByDnD = async (itemId: string, toListId: string | null, toIndex: number) => {
+  // Make the native browser "drag preview" minimal to avoid visual noise / layout jank.
+  let minimalDragImage: HTMLImageElement | null = null;
+  const applyMinimalDragImage = (e: DragEvent) => {
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    dt.effectAllowed = "move";
+    if (typeof window === "undefined") return;
+    if (!minimalDragImage) {
+      minimalDragImage = new window.Image();
+      // 1x1 transparent gif
+      minimalDragImage.src =
+        "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+    }
+    dt.setDragImage(minimalDragImage, 0, 0);
+  };
+
+  const moveItemByDnD = async (
+    itemId: string,
+    toListId: string | null,
+    toIndex: number
+  ) => {
     await runMoveItem({ projectId: projectId(), itemId, toListId, toIndex });
     await refresh();
   };
@@ -265,22 +359,6 @@ export default function ProjectRoute() {
     await refresh();
   };
 
-  const moveItemTo = async (itemId: string, toListId: string | null) => {
-    const destItems = itemsByListId().get(listKey(toListId)) ?? [];
-    await runMoveItem({ projectId: projectId(), itemId, toListId, toIndex: destItems.length });
-    await refresh();
-  };
-
-  const moveItemWithinColumn = async (item: Item, delta: -1 | 1) => {
-    const colKey = listKey(item.listId);
-    const colItems = (itemsByListId().get(colKey) ?? []).slice().sort((a, b) => a.order - b.order);
-    const idx = colItems.findIndex((i) => i.id === item.id);
-    if (idx < 0) return;
-    const next = idx + delta;
-    if (next < 0 || next >= colItems.length) return;
-    await moveItemByDnD(item.id, item.listId, next);
-  };
-
   return (
     <Container py="10" maxW="6xl">
       <VStack alignItems="stretch" gap="6">
@@ -290,22 +368,82 @@ export default function ProjectRoute() {
               <Link href="/">← Projects</Link>
             </HStack>
             <Show when={b()}>
-              <Box class={css({ fontSize: "2xl", fontWeight: "semibold" })}>
-                {b()!.project.title}
-              </Box>
-              <Show when={b()!.project.description}>
-                <Box class={css({ color: "fg.muted" })}>
-                  {b()!.project.description}
-                </Box>
+              <Show
+                when={!isEditingProject()}
+                fallback={
+                  <VStack
+                    alignItems="stretch"
+                    gap="2"
+                    class={css({ maxW: "680px" })}
+                  >
+                    <Input
+                      value={editingProjectTitle()}
+                      onInput={(e) =>
+                        setEditingProjectTitle(e.currentTarget.value)
+                      }
+                    />
+                    <Textarea
+                      value={editingProjectDesc()}
+                      onInput={(e) =>
+                        setEditingProjectDesc(e.currentTarget.value)
+                      }
+                      class={css({ minH: "88px" })}
+                      placeholder="Project description"
+                    />
+                    <HStack justify="flex-start" gap="2">
+                      <Button
+                        size="sm"
+                        variant="solid"
+                        onClick={saveEditProject}
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={cancelEditProject}
+                      >
+                        Cancel
+                      </Button>
+                    </HStack>
+                  </VStack>
+                }
+              >
+                <HStack gap="2" align="center">
+                  <Box class={css({ fontSize: "2xl", fontWeight: "semibold" })}>
+                    {b()!.project.title}
+                  </Box>
+                  <IconButton
+                    size="sm"
+                    variant="ghost"
+                    aria-label="Edit project"
+                    onClick={startEditProject}
+                  >
+                    <PencilIcon />
+                  </IconButton>
+                </HStack>
+                <Show when={b()!.project.description}>
+                  <Box class={css({ color: "fg.muted", maxW: "680px" })}>
+                    {b()!.project.description}
+                  </Box>
+                </Show>
               </Show>
             </Show>
           </Stack>
 
           <HStack gap="2" flexWrap="wrap" justify="flex-end">
-            <Button onClick={onAiSuggestLists} disabled={isAiBusy()} variant="outline">
+            <Button
+              onClick={onAiSuggestLists}
+              disabled={isAiBusy()}
+              variant="outline"
+            >
               Suggest lists
             </Button>
-            <Button onClick={onAiSuggestItems} disabled={isAiBusy()} variant="outline">
+            <Button
+              onClick={onAiSuggestItems}
+              disabled={isAiBusy()}
+              variant="outline"
+            >
               Suggest items
             </Button>
             <Button onClick={onAiReorg} disabled={isAiBusy()} variant="outline">
@@ -325,8 +463,15 @@ export default function ProjectRoute() {
           <Card.Body>
             <form onSubmit={onCreateList}>
               <VStack alignItems="stretch" gap="3">
-                <Input ref={newListTitleEl} placeholder="List title (e.g. Doing)" />
-                <Textarea ref={newListDescEl} placeholder="Description (shown on hover)" class={css({ minH: "80px" })} />
+                <Input
+                  ref={newListTitleEl}
+                  placeholder="List title (e.g. Doing)"
+                />
+                <Textarea
+                  ref={newListDescEl}
+                  placeholder="Description (optional)"
+                  class={css({ minH: "80px" })}
+                />
                 <HStack justify="flex-end">
                   <Button type="submit" variant="solid">
                     Add list
@@ -341,17 +486,23 @@ export default function ProjectRoute() {
           <Card.Root>
             <Card.Header>
               <Card.Title>AI review</Card.Title>
-              <Card.Description>Commentary + questions about your current board.</Card.Description>
+              <Card.Description>
+                Commentary + questions about your current board.
+              </Card.Description>
             </Card.Header>
             <Card.Body>
               <VStack alignItems="stretch" gap="3">
                 <Show when={reviewCommentary()}>
-                  <Box class={css({ whiteSpace: "pre-wrap" })}>{reviewCommentary()!}</Box>
+                  <Box class={css({ whiteSpace: "pre-wrap" })}>
+                    {reviewCommentary()!}
+                  </Box>
                 </Show>
                 <Show when={reviewQuestions().length > 0}>
                   <VStack alignItems="stretch" gap="2">
                     <For each={reviewQuestions()}>
-                      {(q) => <Box class={css({ color: "fg.muted" })}>- {q}</Box>}
+                      {(q) => (
+                        <Box class={css({ color: "fg.muted" })}>- {q}</Box>
+                      )}
                     </For>
                   </VStack>
                 </Show>
@@ -360,118 +511,158 @@ export default function ProjectRoute() {
           </Card.Root>
         </Show>
 
-        <Show when={b()} fallback={<Box class={css({ color: "fg.muted" })}>Loading…</Box>}>
+        <Show
+          when={b()}
+          fallback={<Box class={css({ color: "fg.muted" })}>Loading…</Box>}
+        >
           <Box class={css({ overflowX: "auto" })}>
-            <HStack align="start" gap="4" class={css({ minW: "max-content", pb: "2" })}>
+            <HStack
+              align="start"
+              gap="4"
+              class={css({ minW: "max-content", pb: "2" })}
+            >
               <For each={orderedColumns()}>
                 {(col) => {
                   const columnItems = () => itemsByListId().get(col.key) ?? [];
-                  const listForColumn = () => lists().find((l) => l.id === col.listId) ?? null;
+                  const listForColumn = () =>
+                    lists().find((l) => l.id === col.listId) ?? null;
+                  const isColumnDragOver = () => dragOverColumnId() === col.key;
 
                   return (
-                    <Card.Root class={css({ width: "360px" })}>
+                    <Card.Root
+                      class={css({
+                        width: "360px",
+                        outlineWidth: isColumnDragOver() ? "2px" : "0px",
+                        outlineColor: "border.emphasized",
+                      })}
+                    >
                       <Card.Header>
                         <HStack justify="space-between" align="start" gap="2">
-                          <HoverCard.Root>
-                            <HoverCard.Trigger>
+                          <Box
+                            class={css({
+                              fontWeight: "semibold",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "2",
+                              userSelect: "none",
+                            })}
+                          >
+                            <Show when={!isLoose(col.listId)}>
                               <Box
+                                as="span"
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer?.setData(
+                                    "text/plain",
+                                    String(col.listId)
+                                  );
+                                  applyMinimalDragImage(e);
+                                  setDraggingListId(col.listId);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggingListId(null);
+                                  setDragOverListId(null);
+                                }}
+                                onDragOver={(e) => {
+                                  if (!draggingListId()) return;
+                                  e.preventDefault();
+                                  setDragOverListId(col.listId);
+                                }}
+                                onDrop={async (e) => {
+                                  e.preventDefault();
+                                  setDragOverListId(null);
+                                  await onListDropBefore(String(col.listId));
+                                }}
                                 class={css({
-                                  fontWeight: "semibold",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "2",
-                                  userSelect: "none",
+                                  cursor: "grab",
+                                  borderWidth: "1px",
+                                  borderColor:
+                                    dragOverListId() === col.listId
+                                      ? "border.emphasized"
+                                      : "transparent",
+                                  rounded: "sm",
+                                  px: "1",
+                                  color: "fg.muted",
+                                  fontSize: "sm",
                                 })}
+                                aria-label="Drag to reorder list"
                               >
-                                <Show when={!isLoose(col.listId)}>
-                                  <Box
-                                    as="span"
-                                    draggable
-                                    onDragStart={(e) => {
-                                      e.dataTransfer?.setData("text/plain", String(col.listId));
-                                      setDraggingListId(col.listId);
-                                    }}
-                                    onDragEnd={() => {
-                                      setDraggingListId(null);
-                                      setDragOverListId(null);
-                                    }}
-                                    onDragOver={(e) => {
-                                      if (!draggingListId()) return;
-                                      e.preventDefault();
-                                      setDragOverListId(col.listId);
-                                    }}
-                                    onDrop={async (e) => {
-                                      e.preventDefault();
-                                      setDragOverListId(null);
-                                      await onListDropBefore(String(col.listId));
-                                    }}
-                                    class={css({
-                                      cursor: "grab",
-                                      borderWidth: "1px",
-                                      borderColor: dragOverListId() === col.listId ? "border.emphasized" : "transparent",
-                                      rounded: "sm",
-                                      px: "1",
-                                      color: "fg.muted",
-                                      fontSize: "sm",
-                                    })}
-                                    aria-label="Drag to reorder list"
-                                    title="Drag to reorder list"
-                                  >
-                                    ⋮⋮
-                                  </Box>
-                                </Show>
-                                <Box as="span">{col.title}</Box>
+                                ⋮⋮
                               </Box>
-                            </HoverCard.Trigger>
-                            <HoverCard.Positioner>
-                              <HoverCard.Content>
-                                <Box class={css({ fontSize: "sm", whiteSpace: "pre-wrap" })}>
-                                  {col.description || "(no description)"}
-                                </Box>
-                              </HoverCard.Content>
-                            </HoverCard.Positioner>
-                          </HoverCard.Root>
+                            </Show>
+                            <Box
+                              as="span"
+                              class={css({
+                                color: "fg.muted",
+                                display: "inline-flex",
+                                alignItems: "center",
+                              })}
+                            >
+                              <ListIcon />
+                            </Box>
+                            <Box as="span">{col.title}</Box>
+                          </Box>
 
                           <Show when={!isLoose(col.listId)}>
                             <HStack gap="1">
-                              <Button
+                              <IconButton
                                 size="sm"
                                 variant="ghost"
+                                aria-label="Edit list"
                                 onClick={() => {
                                   const list = listForColumn();
                                   if (list) startEditList(list);
                                 }}
                               >
-                                Edit
-                              </Button>
-                              <Button
+                                <PencilIcon />
+                              </IconButton>
+                              <IconButton
                                 size="sm"
                                 variant="ghost"
+                                aria-label="Delete list"
                                 onClick={async () => {
                                   if (!col.listId) return;
-                                  await runDeleteList({ projectId: projectId(), listId: col.listId });
+                                  await runDeleteList({
+                                    projectId: projectId(),
+                                    listId: col.listId,
+                                  });
                                   await refresh();
                                 }}
                               >
-                                Delete
-                              </Button>
+                                <Trash2Icon />
+                              </IconButton>
                             </HStack>
                           </Show>
                         </HStack>
 
                         <Show when={editingListId() === col.listId}>
                           <VStack alignItems="stretch" gap="2" mt="3">
-                            <Input value={editingListTitle()} onInput={(e) => setEditingListTitle(e.currentTarget.value)} />
+                            <Input
+                              value={editingListTitle()}
+                              onInput={(e) =>
+                                setEditingListTitle(e.currentTarget.value)
+                              }
+                            />
                             <Textarea
                               value={editingListDesc()}
-                              onInput={(e) => setEditingListDesc(e.currentTarget.value)}
+                              onInput={(e) =>
+                                setEditingListDesc(e.currentTarget.value)
+                              }
                               class={css({ minH: "72px" })}
                             />
                             <HStack justify="flex-end" gap="2">
-                              <Button size="sm" variant="outline" onClick={cancelEditList}>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={cancelEditList}
+                              >
                                 Cancel
                               </Button>
-                              <Button size="sm" variant="solid" onClick={saveEditList}>
+                              <Button
+                                size="sm"
+                                variant="solid"
+                                onClick={saveEditList}
+                              >
                                 Save
                               </Button>
                             </HStack>
@@ -480,10 +671,44 @@ export default function ProjectRoute() {
                       </Card.Header>
 
                       <Card.Body>
-                        <VStack alignItems="stretch" gap="2">
+                        <VStack
+                          alignItems="stretch"
+                          gap="2"
+                          onDragOver={(e) => {
+                            if (!draggingItemId()) return;
+                            e.preventDefault();
+                            setDragOverColumnId(col.key);
+                            setDragOverItemId(null);
+                          }}
+                          onDrop={async (e) => {
+                            // Allow dropping anywhere in the column body to move to end.
+                            e.preventDefault();
+                            const dragged = draggingItemId();
+                            if (!dragged) return;
+                            const destListId = col.listId;
+                            const destItems = columnItems().filter(
+                              (x) => x.id !== dragged
+                            );
+                            setDragOverColumnId(null);
+                            await moveItemByDnD(
+                              dragged,
+                              destListId,
+                              destItems.length
+                            );
+                          }}
+                        >
                           <Show
                             when={columnItems().length > 0}
-                            fallback={<Box class={css({ color: "fg.muted", fontSize: "sm" })}>No items.</Box>}
+                            fallback={
+                              <Box
+                                class={css({
+                                  color: "fg.muted",
+                                  fontSize: "sm",
+                                })}
+                              >
+                                No items.
+                              </Box>
+                            }
                           >
                             <For each={columnItems()}>
                               {(it) => (
@@ -494,183 +719,164 @@ export default function ProjectRoute() {
                                     rounded: "md",
                                     px: "3",
                                     py: "2",
-                                    outlineWidth: dragOverItemId() === it.id ? "2px" : "0px",
+                                    outlineWidth:
+                                      dragOverItemId() === it.id
+                                        ? "2px"
+                                        : "0px",
                                     outlineColor: "border.emphasized",
+                                    opacity:
+                                      draggingItemId() === it.id ? 0.35 : 1,
                                   })}
                                   onDragOver={(e) => {
                                     if (!draggingItemId()) return;
                                     e.preventDefault();
+                                    e.stopPropagation();
                                     setDragOverItemId(it.id);
                                     setDragOverColumnId(null);
                                   }}
                                   onDrop={async (e) => {
                                     e.preventDefault();
+                                    e.stopPropagation();
                                     const dragged = draggingItemId();
                                     if (!dragged) return;
 
                                     const destListId = col.listId;
-                                    const destItems = columnItems().filter((x) => x.id !== dragged);
-                                    const targetIdx = destItems.findIndex((x) => x.id === it.id);
+                                    const destItems = columnItems().filter(
+                                      (x) => x.id !== dragged
+                                    );
+                                    const targetIdx = destItems.findIndex(
+                                      (x) => x.id === it.id
+                                    );
                                     if (targetIdx < 0) return;
 
                                     setDragOverItemId(null);
-                                    await moveItemByDnD(dragged, destListId, targetIdx);
+                                    await moveItemByDnD(
+                                      dragged,
+                                      destListId,
+                                      targetIdx
+                                    );
                                   }}
                                 >
-                                  <HStack justify="space-between" align="start" gap="2">
-                                    <HoverCard.Root>
-                                      <HoverCard.Trigger>
-                                        <HStack gap="2" align="center">
-                                          <Box
-                                            as="span"
-                                            draggable
-                                            onDragStart={(e) => {
-                                              e.dataTransfer?.setData("text/plain", it.id);
-                                              setDraggingItemId(it.id);
-                                            }}
-                                            onDragEnd={() => {
-                                              setDraggingItemId(null);
-                                              setDragOverItemId(null);
-                                              setDragOverColumnId(null);
-                                            }}
-                                            class={css({
-                                              cursor: "grab",
-                                              borderWidth: "1px",
-                                              borderColor: "border",
-                                              rounded: "sm",
-                                              px: "1",
-                                              color: "fg.muted",
-                                              fontSize: "sm",
-                                              userSelect: "none",
-                                            })}
-                                            aria-label="Drag to move item"
-                                            title="Drag to move item"
-                                          >
-                                            ⋮⋮
-                                          </Box>
-                                          <Box class={css({ fontWeight: "medium" })}>{it.label}</Box>
-                                        </HStack>
-                                      </HoverCard.Trigger>
-                                      <HoverCard.Positioner>
-                                        <HoverCard.Content>
-                                          <Box class={css({ fontSize: "sm", whiteSpace: "pre-wrap" })}>
-                                            {it.description || "(no description)"}
-                                          </Box>
-                                        </HoverCard.Content>
-                                      </HoverCard.Positioner>
-                                    </HoverCard.Root>
+                                  <HStack
+                                    justify="space-between"
+                                    align="start"
+                                    gap="2"
+                                  >
+                                    <HStack gap="2" align="center">
+                                      <Box
+                                        as="span"
+                                        draggable
+                                        onDragStart={(e) => {
+                                          e.dataTransfer?.setData(
+                                            "text/plain",
+                                            it.id
+                                          );
+                                          applyMinimalDragImage(e);
+                                          setDraggingItemId(it.id);
+                                        }}
+                                        onDragEnd={() => {
+                                          setDraggingItemId(null);
+                                          setDragOverItemId(null);
+                                          setDragOverColumnId(null);
+                                        }}
+                                        class={css({
+                                          cursor: "grab",
+                                          borderWidth: "1px",
+                                          borderColor: "border",
+                                          rounded: "sm",
+                                          px: "1",
+                                          color: "fg.muted",
+                                          fontSize: "sm",
+                                          userSelect: "none",
+                                        })}
+                                        aria-label="Drag to move item"
+                                      >
+                                        ⋮⋮
+                                      </Box>
+                                      <Box
+                                        class={css({ fontWeight: "medium" })}
+                                      >
+                                        {it.label}
+                                      </Box>
+                                    </HStack>
 
                                     <HStack gap="1">
-                                      <Button size="sm" variant="ghost" onClick={() => startEditItem(it)}>
-                                        Edit
-                                      </Button>
-                                      <Button
+                                      <IconButton
                                         size="sm"
                                         variant="ghost"
+                                        aria-label="Edit item"
+                                        onClick={() => startEditItem(it)}
+                                      >
+                                        <PencilIcon />
+                                      </IconButton>
+                                      <IconButton
+                                        size="sm"
+                                        variant="ghost"
+                                        aria-label="Delete item"
                                         onClick={async () => {
-                                          await runDeleteItem({ projectId: projectId(), itemId: it.id });
+                                          await runDeleteItem({
+                                            projectId: projectId(),
+                                            itemId: it.id,
+                                          });
                                           await refresh();
                                         }}
                                       >
-                                        Delete
-                                      </Button>
+                                        <Trash2Icon />
+                                      </IconButton>
                                     </HStack>
                                   </HStack>
 
                                   <Show when={editingItemId() === it.id}>
                                     <VStack alignItems="stretch" gap="2" mt="3">
-                                      <Input value={editingItemLabel()} onInput={(e) => setEditingItemLabel(e.currentTarget.value)} />
+                                      <Input
+                                        value={editingItemLabel()}
+                                        onInput={(e) =>
+                                          setEditingItemLabel(
+                                            e.currentTarget.value
+                                          )
+                                        }
+                                      />
                                       <Textarea
                                         value={editingItemDesc()}
-                                        onInput={(e) => setEditingItemDesc(e.currentTarget.value)}
+                                        onInput={(e) =>
+                                          setEditingItemDesc(
+                                            e.currentTarget.value
+                                          )
+                                        }
                                         class={css({ minH: "72px" })}
                                       />
                                       <HStack justify="flex-end" gap="2">
-                                        <Button size="sm" variant="outline" onClick={cancelEditItem}>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={cancelEditItem}
+                                        >
                                           Cancel
                                         </Button>
-                                        <Button size="sm" variant="solid" onClick={saveEditItem}>
+                                        <Button
+                                          size="sm"
+                                          variant="solid"
+                                          onClick={saveEditItem}
+                                        >
                                           Save
                                         </Button>
                                       </HStack>
                                     </VStack>
                                   </Show>
-
-                                  <HStack gap="2" mt="2" flexWrap="wrap">
-                                    <Button
-                                      size="xs"
-                                      variant="outline"
-                                      onClick={() => moveItemWithinColumn(it, -1)}
-                                    >
-                                      Up
-                                    </Button>
-                                    <Button
-                                      size="xs"
-                                      variant="outline"
-                                      onClick={() => moveItemWithinColumn(it, 1)}
-                                    >
-                                      Down
-                                    </Button>
-                                    <Button
-                                      size="xs"
-                                      variant="outline"
-                                      disabled={isLoose(col.listId)}
-                                      onClick={() => moveItemTo(it.id, null)}
-                                    >
-                                      To Loose
-                                    </Button>
-                                    <For each={lists()}>
-                                      {(l) => (
-                                        <Button
-                                          size="xs"
-                                          variant="outline"
-                                          disabled={col.listId === l.id}
-                                          onClick={() => moveItemTo(it.id, l.id)}
-                                        >
-                                          To {l.title}
-                                        </Button>
-                                      )}
-                                    </For>
-                                  </HStack>
                                 </Box>
                               )}
                             </For>
                           </Show>
 
-                          <Box
-                            class={css({
-                              borderWidth: "1px",
-                              borderStyle: "dashed",
-                              borderColor: dragOverColumnId() === col.key ? "border.emphasized" : "border",
-                              rounded: "md",
-                              p: "2",
-                              color: "fg.muted",
-                              fontSize: "sm",
-                            })}
-                            onDragOver={(e) => {
-                              if (!draggingItemId()) return;
-                              e.preventDefault();
-                              setDragOverColumnId(col.key);
-                              setDragOverItemId(null);
-                            }}
-                            onDrop={async (e) => {
-                              e.preventDefault();
-                              const dragged = draggingItemId();
-                              if (!dragged) return;
-                              const destListId = col.listId;
-                              const destItems = columnItems().filter((x) => x.id !== dragged);
-                              setDragOverColumnId(null);
-                              await moveItemByDnD(dragged, destListId, destItems.length);
-                            }}
-                          >
-                            Drop here to add to end
-                          </Box>
-
                           <Box pt="2">
                             <Show
                               when={addingItemListId() === col.listId}
                               fallback={
-                                <Button size="sm" variant="outline" onClick={() => openAddItem(col.listId)}>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openAddItem(col.listId)}
+                                >
                                   Add item
                                 </Button>
                               }
@@ -679,19 +885,31 @@ export default function ProjectRoute() {
                                 <Input
                                   placeholder="Item label"
                                   value={newItemLabel()}
-                                  onInput={(e) => setNewItemLabel(e.currentTarget.value)}
+                                  onInput={(e) =>
+                                    setNewItemLabel(e.currentTarget.value)
+                                  }
                                 />
                                 <Textarea
-                                  placeholder="Description (shown on hover)"
+                                  placeholder="Description (optional)"
                                   value={newItemDesc()}
-                                  onInput={(e) => setNewItemDesc(e.currentTarget.value)}
+                                  onInput={(e) =>
+                                    setNewItemDesc(e.currentTarget.value)
+                                  }
                                   class={css({ minH: "72px" })}
                                 />
                                 <HStack justify="flex-end" gap="2">
-                                  <Button size="sm" variant="outline" onClick={cancelAddItem}>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={cancelAddItem}
+                                  >
                                     Cancel
                                   </Button>
-                                  <Button size="sm" variant="solid" onClick={createItemFor}>
+                                  <Button
+                                    size="sm"
+                                    variant="solid"
+                                    onClick={createItemFor}
+                                  >
                                     Add
                                   </Button>
                                 </HStack>
@@ -711,5 +929,3 @@ export default function ProjectRoute() {
     </Container>
   );
 }
-
-

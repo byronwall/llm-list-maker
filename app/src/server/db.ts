@@ -63,7 +63,9 @@ class JsonDb {
 
   async listProjects(): Promise<Project[]> {
     const data = await this.readData();
-    return [...data.projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return [...data.projects].sort((a, b) =>
+      b.updatedAt.localeCompare(a.updatedAt)
+    );
   }
 
   async getProject(projectId: string): Promise<Project | null> {
@@ -71,7 +73,10 @@ class JsonDb {
     return data.projects.find((p) => p.id === projectId) ?? null;
   }
 
-  async createProject(input: { title: string; description: string }): Promise<Project> {
+  async createProject(input: {
+    title: string;
+    description: string;
+  }): Promise<Project> {
     const title = input.title.trim();
     const description = input.description.trim();
     if (!title) throw new Error("Project title is required");
@@ -86,6 +91,26 @@ class JsonDb {
         updatedAt: createdAt,
       };
       data.projects.push(project);
+      return project;
+    });
+  }
+
+  async updateProject(input: {
+    projectId: string;
+    patch: Partial<Pick<Project, "title" | "description">>;
+  }): Promise<Project> {
+    return this.mutate((data) => {
+      const project = data.projects.find((p) => p.id === input.projectId);
+      if (!project) throw new Error("Project not found");
+
+      const patch: any = { ...input.patch };
+      if (typeof patch.title === "string") patch.title = patch.title.trim();
+      if (typeof patch.description === "string")
+        patch.description = patch.description.trim();
+      if (patch.title === "") throw new Error("Project title is required");
+
+      Object.assign(project, patch);
+      project.updatedAt = nowIso();
       return project;
     });
   }
@@ -123,7 +148,11 @@ class JsonDb {
     });
   }
 
-  private normalizeItemOrders(data: DbData, projectId: string, listId: string | null) {
+  private normalizeItemOrders(
+    data: DbData,
+    projectId: string,
+    listId: string | null
+  ) {
     const items = data.items
       .filter((i) => i.projectId === projectId && i.listId === listId)
       .sort((a, b) => a.order - b.order);
@@ -133,7 +162,11 @@ class JsonDb {
     });
   }
 
-  async createList(input: { projectId: string; title: string; description: string }): Promise<List> {
+  async createList(input: {
+    projectId: string;
+    title: string;
+    description: string;
+  }): Promise<List> {
     const title = input.title.trim();
     const description = input.description.trim();
     if (!title) throw new Error("List title is required");
@@ -143,7 +176,13 @@ class JsonDb {
       if (!project) throw new Error("Project not found");
 
       const createdAt = nowIso();
-      const order = Math.max(-1, ...data.lists.filter((l) => l.projectId === input.projectId).map((l) => l.order)) + 1;
+      const order =
+        Math.max(
+          -1,
+          ...data.lists
+            .filter((l) => l.projectId === input.projectId)
+            .map((l) => l.order)
+        ) + 1;
       const list: List = {
         id: id(),
         projectId: input.projectId,
@@ -159,17 +198,24 @@ class JsonDb {
     });
   }
 
-  async updateList(input: { projectId: string; listId: string; patch: Partial<Pick<List, "title" | "description">> }) {
+  async updateList(input: {
+    projectId: string;
+    listId: string;
+    patch: Partial<Pick<List, "title" | "description">>;
+  }) {
     return this.mutate((data) => {
       const project = data.projects.find((p) => p.id === input.projectId);
       if (!project) throw new Error("Project not found");
 
-      const list = data.lists.find((l) => l.id === input.listId && l.projectId === input.projectId);
+      const list = data.lists.find(
+        (l) => l.id === input.listId && l.projectId === input.projectId
+      );
       if (!list) throw new Error("List not found");
 
       const patch: any = { ...input.patch };
       if (typeof patch.title === "string") patch.title = patch.title.trim();
-      if (typeof patch.description === "string") patch.description = patch.description.trim();
+      if (typeof patch.description === "string")
+        patch.description = patch.description.trim();
       if (patch.title === "") throw new Error("List title is required");
 
       Object.assign(list, patch);
@@ -179,30 +225,43 @@ class JsonDb {
     });
   }
 
-  async deleteList(input: { projectId: string; listId: string }): Promise<void> {
+  async deleteList(input: {
+    projectId: string;
+    listId: string;
+  }): Promise<void> {
     return this.mutate((data) => {
       const project = data.projects.find((p) => p.id === input.projectId);
       if (!project) throw new Error("Project not found");
 
-      const list = data.lists.find((l) => l.id === input.listId && l.projectId === input.projectId);
+      const list = data.lists.find(
+        (l) => l.id === input.listId && l.projectId === input.projectId
+      );
       if (!list) throw new Error("List not found");
 
       // Move items in this list to Loose.
       for (const item of data.items) {
-        if (item.projectId === input.projectId && item.listId === input.listId) {
+        if (
+          item.projectId === input.projectId &&
+          item.listId === input.listId
+        ) {
           item.listId = null;
           item.updatedAt = nowIso();
         }
       }
 
-      data.lists = data.lists.filter((l) => !(l.projectId === input.projectId && l.id === input.listId));
+      data.lists = data.lists.filter(
+        (l) => !(l.projectId === input.projectId && l.id === input.listId)
+      );
       this.normalizeListOrders(data, input.projectId);
       this.normalizeItemOrders(data, input.projectId, null);
       project.updatedAt = nowIso();
     });
   }
 
-  async reorderLists(input: { projectId: string; listIdsInOrder: string[] }): Promise<List[]> {
+  async reorderLists(input: {
+    projectId: string;
+    listIdsInOrder: string[];
+  }): Promise<List[]> {
     return this.mutate((data) => {
       const project = data.projects.find((p) => p.id === input.projectId);
       if (!project) throw new Error("Project not found");
@@ -219,7 +278,9 @@ class JsonDb {
 
       this.normalizeListOrders(data, input.projectId);
       project.updatedAt = nowIso();
-      return data.lists.filter((l) => l.projectId === input.projectId).sort((a, b) => a.order - b.order);
+      return data.lists
+        .filter((l) => l.projectId === input.projectId)
+        .sort((a, b) => a.order - b.order);
     });
   }
 
@@ -237,14 +298,23 @@ class JsonDb {
       const project = data.projects.find((p) => p.id === input.projectId);
       if (!project) throw new Error("Project not found");
       if (input.listId) {
-        const list = data.lists.find((l) => l.id === input.listId && l.projectId === input.projectId);
+        const list = data.lists.find(
+          (l) => l.id === input.listId && l.projectId === input.projectId
+        );
         if (!list) throw new Error("List not found");
       }
 
       const createdAt = nowIso();
       const order =
-        Math.max(-1, ...data.items.filter((i) => i.projectId === input.projectId && i.listId === input.listId).map((i) => i.order)) +
-        1;
+        Math.max(
+          -1,
+          ...data.items
+            .filter(
+              (i) =>
+                i.projectId === input.projectId && i.listId === input.listId
+            )
+            .map((i) => i.order)
+        ) + 1;
       const item: Item = {
         id: id(),
         projectId: input.projectId,
@@ -270,12 +340,15 @@ class JsonDb {
       const project = data.projects.find((p) => p.id === input.projectId);
       if (!project) throw new Error("Project not found");
 
-      const item = data.items.find((i) => i.id === input.itemId && i.projectId === input.projectId);
+      const item = data.items.find(
+        (i) => i.id === input.itemId && i.projectId === input.projectId
+      );
       if (!item) throw new Error("Item not found");
 
       const patch: any = { ...input.patch };
       if (typeof patch.label === "string") patch.label = patch.label.trim();
-      if (typeof patch.description === "string") patch.description = patch.description.trim();
+      if (typeof patch.description === "string")
+        patch.description = patch.description.trim();
       if (patch.label === "") throw new Error("Item label is required");
 
       Object.assign(item, patch);
@@ -285,31 +358,47 @@ class JsonDb {
     });
   }
 
-  async deleteItem(input: { projectId: string; itemId: string }): Promise<void> {
+  async deleteItem(input: {
+    projectId: string;
+    itemId: string;
+  }): Promise<void> {
     return this.mutate((data) => {
       const project = data.projects.find((p) => p.id === input.projectId);
       if (!project) throw new Error("Project not found");
 
-      const item = data.items.find((i) => i.id === input.itemId && i.projectId === input.projectId);
+      const item = data.items.find(
+        (i) => i.id === input.itemId && i.projectId === input.projectId
+      );
       if (!item) throw new Error("Item not found");
 
       const sourceListId = item.listId;
-      data.items = data.items.filter((i) => !(i.projectId === input.projectId && i.id === input.itemId));
+      data.items = data.items.filter(
+        (i) => !(i.projectId === input.projectId && i.id === input.itemId)
+      );
       this.normalizeItemOrders(data, input.projectId, sourceListId);
       project.updatedAt = nowIso();
     });
   }
 
-  async moveItem(input: { projectId: string; itemId: string; toListId: string | null; toIndex: number }): Promise<Item> {
+  async moveItem(input: {
+    projectId: string;
+    itemId: string;
+    toListId: string | null;
+    toIndex: number;
+  }): Promise<Item> {
     return this.mutate((data) => {
       const project = data.projects.find((p) => p.id === input.projectId);
       if (!project) throw new Error("Project not found");
 
-      const item = data.items.find((i) => i.id === input.itemId && i.projectId === input.projectId);
+      const item = data.items.find(
+        (i) => i.id === input.itemId && i.projectId === input.projectId
+      );
       if (!item) throw new Error("Item not found");
 
       if (input.toListId) {
-        const list = data.lists.find((l) => l.id === input.toListId && l.projectId === input.projectId);
+        const list = data.lists.find(
+          (l) => l.id === input.toListId && l.projectId === input.projectId
+        );
         if (!list) throw new Error("List not found");
       }
 
@@ -323,9 +412,17 @@ class JsonDb {
 
       // Build destination list, insert at index, then renumber.
       const destItems = data.items
-        .filter((i) => i.projectId === input.projectId && i.listId === toListId && i.id !== item.id)
+        .filter(
+          (i) =>
+            i.projectId === input.projectId &&
+            i.listId === toListId &&
+            i.id !== item.id
+        )
         .sort((a, b) => a.order - b.order);
-      const insertAt = Math.max(0, Math.min(destItems.length, Math.floor(input.toIndex)));
+      const insertAt = Math.max(
+        0,
+        Math.min(destItems.length, Math.floor(input.toIndex))
+      );
       destItems.splice(insertAt, 0, item);
       destItems.forEach((it, idx) => {
         it.order = idx;
@@ -349,5 +446,3 @@ export function db() {
   if (!singleton) singleton = new JsonDb();
   return singleton;
 }
-
-

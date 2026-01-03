@@ -1,12 +1,20 @@
 import { action } from "@solidjs/router";
 
-import { db } from "~/server/db";
-import { reviewBoard, suggestItems, suggestLists, suggestReorg } from "~/server/ai";
+import { reviewBoard, suggestItems, suggestLists, suggestReorg } from "./ai";
+import { db } from "./db";
 
 export const createProject = action(async (input: { title: string; description: string }) => {
   "use server";
   return await db().createProject(input);
 }, "projects:create");
+
+export const updateProject = action(
+  async (input: { projectId: string; patch: { title?: string; description?: string } }) => {
+    "use server";
+    return await db().updateProject(input);
+  },
+  "project:update",
+);
 
 export const createList = action(async (input: { projectId: string; title: string; description: string }) => {
   "use server";
