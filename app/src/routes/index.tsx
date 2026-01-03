@@ -10,22 +10,38 @@ import { Textarea } from "~/components/ui/textarea";
 import { Link } from "~/components/ui/link";
 import * as Popover from "~/components/ui/popover";
 
-import { createProject } from "~/server/actions";
+import { createProject, importProjectJson } from "~/server/actions";
 import { listProjectSummaries } from "~/server/queries";
 
 export default function HomeRoute() {
   const projects = createAsync(() => listProjectSummaries());
   const runCreateProject = useAction(createProject);
+  const runImportProjectJson = useAction(importProjectJson);
 
   let titleEl!: HTMLInputElement;
   let descEl!: HTMLTextAreaElement;
+  let importEl!: HTMLInputElement;
   const [isCreateOpen, setIsCreateOpen] = createSignal(false);
+  const [isDraggingImport, setIsDraggingImport] = createSignal(false);
 
   createEffect(() => {
     if (!isCreateOpen()) return;
     // Popover content mounts lazily; focus on the next microtask.
     queueMicrotask(() => titleEl?.focus());
   });
+
+  const importFiles = async (files: FileList | null | undefined) => {
+    const file = files?.[0];
+    if (!file) return;
+    const jsonText = await file.text();
+    const res = await runImportProjectJson({ jsonText });
+    const ids = res?.importedProjectIds ?? [];
+    if (ids.length === 1) {
+      window.location.href = `/projects/${ids[0]}`;
+    } else if (ids.length > 1) {
+      window.location.reload();
+    }
+  };
 
   const onCreate = async (e: Event) => {
     e.preventDefault();
@@ -54,78 +70,130 @@ export default function HomeRoute() {
             </Box>
           </Stack>
 
-          <Popover.Root
-            open={isCreateOpen()}
-            onOpenChange={(details: any) => setIsCreateOpen(!!details?.open)}
-          >
-            <Popover.Trigger
-              asChild={(triggerProps) => (
-                <Button variant="solid" {...triggerProps}>
-                  <HStack gap="2" alignItems="center">
-                    <PlusIcon />
-                    <Box>New project</Box>
-                  </HStack>
-                </Button>
-              )}
-            />
-            <Popover.Positioner>
-              <Popover.Content
-                class={css({
-                  width: "min(480px, calc(100vw - 32px))",
-                })}
-              >
-                <Popover.Header>
-                  <Popover.Title>Create project</Popover.Title>
-                  <Popover.Description>
-                    Basic local JSON persistence (no real DB yet).
-                  </Popover.Description>
-                </Popover.Header>
+          <input
+            ref={importEl}
+            type="file"
+            accept="application/json,.json"
+            class={css({ display: "none" })}
+            onChange={(e) => void importFiles(e.currentTarget.files)}
+          />
 
-                <Popover.Body>
-                  <form onSubmit={onCreate}>
-                    <VStack alignItems="stretch" gap="3">
-                      <label class={css({ display: "grid", gap: "2" })}>
-                        <Box
-                          class={css({ fontSize: "sm", color: "fg.muted" })}
-                        >
-                          Title
-                        </Box>
-                        <Input
-                          ref={titleEl}
-                          placeholder="e.g. Home renovation"
-                        />
-                      </label>
-                      <label class={css({ display: "grid", gap: "2" })}>
-                        <Box
-                          class={css({ fontSize: "sm", color: "fg.muted" })}
-                        >
-                          Description
-                        </Box>
-                        <Textarea
-                          ref={descEl}
-                          placeholder="What is this project for?"
-                          class={css({ minH: "100px" })}
-                        />
-                      </label>
-                      <HStack justify="flex-end" gap="2">
-                        <Popover.CloseTrigger
-                          asChild={(closeProps) => (
-                            <Button variant="outline" {...closeProps}>
-                              Cancel
-                            </Button>
-                          )}
-                        />
-                        <Button type="submit" variant="solid">
-                          Create
-                        </Button>
-                      </HStack>
-                    </VStack>
-                  </form>
-                </Popover.Body>
-              </Popover.Content>
-            </Popover.Positioner>
-          </Popover.Root>
+          <HStack gap="2" flexWrap="wrap" justify="flex-end">
+            <Button variant="outline" onClick={() => importEl?.click()}>
+              Import JSON
+            </Button>
+
+            <Popover.Root
+              open={isCreateOpen()}
+              onOpenChange={(details: any) => setIsCreateOpen(!!details?.open)}
+            >
+              <Popover.Trigger
+                asChild={(triggerProps) => (
+                  <Button variant="solid" {...triggerProps}>
+                    <HStack gap="2" alignItems="center">
+                      <PlusIcon />
+                      <Box>New project</Box>
+                    </HStack>
+                  </Button>
+                )}
+              />
+              <Popover.Positioner>
+                <Popover.Content
+                  class={css({
+                    width: "min(480px, calc(100vw - 32px))",
+                  })}
+                >
+                  <Popover.Header>
+                    <Popover.Title>Create project</Popover.Title>
+                    <Popover.Description>
+                      Basic local JSON persistence (no real DB yet).
+                    </Popover.Description>
+                  </Popover.Header>
+
+                  <Popover.Body>
+                    <form onSubmit={onCreate}>
+                      <VStack alignItems="stretch" gap="3">
+                        <label class={css({ display: "grid", gap: "2" })}>
+                          <Box
+                            class={css({ fontSize: "sm", color: "fg.muted" })}
+                          >
+                            Title
+                          </Box>
+                          <Input
+                            ref={titleEl}
+                            placeholder="e.g. Home renovation"
+                          />
+                        </label>
+                        <label class={css({ display: "grid", gap: "2" })}>
+                          <Box
+                            class={css({ fontSize: "sm", color: "fg.muted" })}
+                          >
+                            Description
+                          </Box>
+                          <Textarea
+                            ref={descEl}
+                            placeholder="What is this project for?"
+                            class={css({ minH: "100px" })}
+                          />
+                        </label>
+                        <HStack justify="flex-end" gap="2">
+                          <Popover.CloseTrigger
+                            asChild={(closeProps) => (
+                              <Button variant="outline" {...closeProps}>
+                                Cancel
+                              </Button>
+                            )}
+                          />
+                          <Button type="submit" variant="solid">
+                            Create
+                          </Button>
+                        </HStack>
+                      </VStack>
+                    </form>
+                  </Popover.Body>
+                </Popover.Content>
+              </Popover.Positioner>
+            </Popover.Root>
+          </HStack>
         </HStack>
+
+        <Box
+          class={css({
+            borderWidth: "1px",
+            borderStyle: "dashed",
+            borderColor: isDraggingImport() ? "colorPalette.solid" : "border",
+            borderRadius: "lg",
+            p: "4",
+            bg: isDraggingImport() ? "bg.muted" : "transparent",
+            transition: "background-color 120ms ease, border-color 120ms ease",
+          })}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            setIsDraggingImport(true);
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDraggingImport(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            setIsDraggingImport(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDraggingImport(false);
+            void importFiles(e.dataTransfer?.files);
+          }}
+        >
+          <Stack gap="1">
+            <Box class={css({ fontWeight: "semibold" })}>
+              Drag & drop a JSON file to import
+            </Box>
+            <Box class={css({ fontSize: "sm", color: "fg.muted" })}>
+              Supports a single project JSON ({`{ project, lists, items }`}) or the legacy db JSON.
+            </Box>
+          </Stack>
+        </Box>
 
         <Show
           when={projects()}

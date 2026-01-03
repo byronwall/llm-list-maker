@@ -6,12 +6,32 @@ import { IconButton } from "~/components/ui/icon-button";
 import { Input } from "~/components/ui/input";
 import { Link } from "~/components/ui/link";
 import { Textarea } from "~/components/ui/textarea";
-import { PencilIcon, Wand2Icon } from "lucide-solid";
+import { DownloadIcon, PencilIcon, Wand2Icon } from "lucide-solid";
 import { useProjectBoard } from "./project-board-context";
 import { CreateListPopover } from "./CreateListPopover";
 
 export function ProjectBoardHeader() {
   const pb = useProjectBoard();
+  const onDownloadJson = () => {
+    const board = pb.board();
+    if (!board) return;
+
+    const json = JSON.stringify(board, null, 2) + "\n";
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const safeName = (board.project.title || board.project.id)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 80);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safeName || board.project.id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <HStack justify="space-between" alignItems="start">
@@ -30,11 +50,15 @@ export function ProjectBoardHeader() {
               >
                 <Input
                   value={pb.editingProjectTitle()}
-                  onInput={(e) => pb.setEditingProjectTitle(e.currentTarget.value)}
+                  onInput={(e) =>
+                    pb.setEditingProjectTitle(e.currentTarget.value)
+                  }
                 />
                 <Textarea
                   value={pb.editingProjectDesc()}
-                  onInput={(e) => pb.setEditingProjectDesc(e.currentTarget.value)}
+                  onInput={(e) =>
+                    pb.setEditingProjectDesc(e.currentTarget.value)
+                  }
                   class={css({ minH: "88px" })}
                   placeholder="Project description"
                 />
@@ -80,6 +104,16 @@ export function ProjectBoardHeader() {
       </Stack>
 
       <HStack gap="2" flexWrap="wrap" justify="flex-end">
+        <Button
+          variant="outline"
+          onClick={onDownloadJson}
+          disabled={!pb.board()}
+        >
+          <HStack gap="2" alignItems="center">
+            <DownloadIcon />
+            <Box>Download JSON</Box>
+          </HStack>
+        </Button>
         <CreateListPopover />
 
         <Button
@@ -96,5 +130,3 @@ export function ProjectBoardHeader() {
     </HStack>
   );
 }
-
-

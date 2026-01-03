@@ -137,5 +137,3 @@ export const emptyItemsClass = css({
   color: "fg.muted",
   fontSize: "sm",
 });
-
-

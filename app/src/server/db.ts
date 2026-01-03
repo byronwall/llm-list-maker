@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -9,102 +9,321 @@ import type {
   ProjectSummary,
 } from "~/lib/domain";
 
-type DbData = {
+type LegacyDbData = {
   projects: Project[];
   lists: List[];
   items: Item[];
 };
 
+export type ProjectFileData = ProjectBoard;
+
 const nowIso = () => new Date().toISOString();
 const id = () => crypto.randomUUID();
 
-function getDbFilePath() {
-  // For local dev: write to repo directory.
-  // Note: this is not suitable for serverless runtime persistence.
+function getLegacyDbFilePath() {
   return path.join(process.cwd(), "data", "db.json");
 }
 
-function emptyData(): DbData {
-  return {
-    projects: [],
-    lists: [],
-    items: [],
-  };
+function getProjectsDirPath() {
+  return path.join(process.cwd(), "data", "projects");
 }
 
 class JsonDb {
   private writeQueue: Promise<void> = Promise.resolve();
+  private initPromise: Promise<void> | null = null;
 
-  private async readData(): Promise<DbData> {
-    const filePath = getDbFilePath();
+  private ensureInitialized(): Promise<void> {
+    if (!this.initPromise) this.initPromise = this.migrateLegacyDbIfNeeded();
+    return this.initPromise;
+  }
+
+  private async listProjectFileIds(): Promise<string[]> {
+    const dir = getProjectsDirPath();
     try {
-      const raw = await readFile(filePath, "utf8");
-      const parsed = JSON.parse(raw) as DbData;
-      return {
-        ...emptyData(),
-        ...parsed,
-      };
+      const entries = await readdir(dir, { withFileTypes: true });
+      return entries
+        .filter((e) => e.isFile())
+        .map((e) => e.name)
+        .filter((n) => n.endsWith(".json"))
+        .map((n) => n.slice(0, -".json".length));
     } catch (err: any) {
-      if (err?.code === "ENOENT") return emptyData();
+      if (err?.code === "ENOENT") return [];
       throw err;
     }
   }
 
-  private async writeData(data: DbData): Promise<void> {
-    const filePath = getDbFilePath();
+  private getProjectFilePath(projectId: string) {
+    return path.join(getProjectsDirPath(), `${projectId}.json`);
+  }
+
+  private async readProjectFile(projectId: string): Promise<ProjectFileData | null> {
+    const filePath = this.getProjectFilePath(projectId);
+    try {
+      const raw = await readFile(filePath, "utf8");
+      const parsed = JSON.parse(raw) as any;
+      return this.coerceProjectFile(parsed, projectId);
+    } catch (err: any) {
+      if (err?.code === "ENOENT") return null;
+      throw err;
+    }
+  }
+
+  private async writeProjectFile(projectId: string, data: ProjectFileData): Promise<void> {
+    const filePath = this.getProjectFilePath(projectId);
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, JSON.stringify(data, null, 2) + "\n", "utf8");
   }
 
-  private async mutate<T>(fn: (data: DbData) => T | Promise<T>): Promise<T> {
+  private async mutateProject<T>(
+    projectId: string,
+    fn: (data: ProjectFileData) => T | Promise<T>
+  ): Promise<T> {
     let result!: T;
     this.writeQueue = this.writeQueue.then(async () => {
-      const data = await this.readData();
+      await this.ensureInitialized();
+      const data = await this.readProjectFile(projectId);
+      if (!data) throw new Error("Project not found");
       result = await fn(data);
-      await this.writeData(data);
+      await this.writeProjectFile(projectId, data);
     });
     await this.writeQueue;
     return result;
   }
 
+  private coerceProjectFile(input: any, projectIdHint?: string): ProjectFileData {
+    const now = nowIso();
+    const projectId = String(input?.project?.id ?? projectIdHint ?? id());
+
+    const project: Project = {
+      id: projectId,
+      title: String(input?.project?.title ?? "").trim(),
+      description: String(input?.project?.description ?? ""),
+      createdAt: String(input?.project?.createdAt ?? now),
+      updatedAt: String(input?.project?.updatedAt ?? input?.project?.createdAt ?? now),
+    };
+    if (!project.title) project.title = "Untitled project";
+
+    const lists: List[] = Array.isArray(input?.lists) ? input.lists : [];
+    const items: Item[] = Array.isArray(input?.items) ? input.items : [];
+
+    const normalizedLists: List[] = lists.map((l: any, idx: number) => ({
+      id: String(l?.id ?? id()),
+      projectId,
+      title: String(l?.title ?? "").trim() || `List ${idx + 1}`,
+      description: String(l?.description ?? ""),
+      order: Number.isFinite(Number(l?.order)) ? Number(l.order) : idx,
+      createdAt: String(l?.createdAt ?? now),
+      updatedAt: String(l?.updatedAt ?? l?.createdAt ?? now),
+    }));
+
+    const listIds = new Set(normalizedLists.map((l) => l.id));
+    const normalizedItems: Item[] = items.map((it: any, idx: number) => ({
+      id: String(it?.id ?? id()),
+      projectId,
+      listId: it?.listId == null ? null : String(it.listId),
+      label: String(it?.label ?? "").trim() || `Item ${idx + 1}`,
+      description: String(it?.description ?? ""),
+      order: Number.isFinite(Number(it?.order)) ? Number(it.order) : idx,
+      createdAt: String(it?.createdAt ?? now),
+      updatedAt: String(it?.updatedAt ?? it?.createdAt ?? now),
+    }));
+
+    // Ensure listId references are valid; otherwise treat as Loose.
+    for (const it of normalizedItems) {
+      if (it.listId && !listIds.has(it.listId)) it.listId = null;
+    }
+
+    return {
+      project,
+      lists: normalizedLists.sort((a, b) => a.order - b.order),
+      items: normalizedItems.sort((a, b) => {
+        const aKey = a.listId ?? "";
+        const bKey = b.listId ?? "";
+        if (aKey !== bKey) return aKey.localeCompare(bKey);
+        if (a.order !== b.order) return a.order - b.order;
+        return a.updatedAt.localeCompare(b.updatedAt);
+      }),
+    };
+  }
+
+  private async migrateLegacyDbIfNeeded(): Promise<void> {
+    const dir = getProjectsDirPath();
+    const existingIds = await this.listProjectFileIds();
+    if (existingIds.length > 0) return;
+
+    const legacyPath = getLegacyDbFilePath();
+    let legacyRaw: string;
+    try {
+      legacyRaw = await readFile(legacyPath, "utf8");
+    } catch (err: any) {
+      if (err?.code === "ENOENT") return;
+      throw err;
+    }
+
+    let legacy: LegacyDbData;
+    try {
+      legacy = JSON.parse(legacyRaw) as LegacyDbData;
+    } catch {
+      // If the legacy file is not valid JSON, do not attempt migration.
+      return;
+    }
+
+    const projects = Array.isArray(legacy?.projects) ? legacy.projects : [];
+    const lists = Array.isArray(legacy?.lists) ? legacy.lists : [];
+    const items = Array.isArray(legacy?.items) ? legacy.items : [];
+
+    if (projects.length === 0) return;
+
+    await mkdir(dir, { recursive: true });
+    for (const p of projects) {
+      const projectId = String((p as any)?.id ?? id());
+      const board: ProjectFileData = {
+        project: {
+          id: projectId,
+          title: String((p as any)?.title ?? "Untitled project"),
+          description: String((p as any)?.description ?? ""),
+          createdAt: String((p as any)?.createdAt ?? nowIso()),
+          updatedAt: String((p as any)?.updatedAt ?? (p as any)?.createdAt ?? nowIso()),
+        },
+        lists: lists
+          .filter((l) => String((l as any)?.projectId ?? "") === projectId)
+          .map((l) => ({
+            ...l,
+            projectId,
+          }))
+          .sort((a, b) => a.order - b.order),
+        items: items
+          .filter((it) => String((it as any)?.projectId ?? "") === projectId)
+          .map((it) => ({
+            ...it,
+            projectId,
+          }))
+          .sort((a, b) => {
+            const aKey = a.listId ?? "";
+            const bKey = b.listId ?? "";
+            if (aKey !== bKey) return aKey.localeCompare(bKey);
+            if (a.order !== b.order) return a.order - b.order;
+            return a.updatedAt.localeCompare(b.updatedAt);
+          }),
+      };
+      await this.writeProjectFile(projectId, board);
+    }
+
+    // Leave a backup of the old file so data is preserved.
+    try {
+      await rename(legacyPath, path.join(path.dirname(legacyPath), "db.legacy.json"));
+    } catch {
+      // If rename fails (e.g. backup exists), keep the old file as-is.
+    }
+  }
+
+  async importProjectJsonText(jsonText: string): Promise<{ importedProjectIds: string[] }> {
+    await this.ensureInitialized();
+    const parsed = JSON.parse(jsonText) as any;
+
+    const importedProjectIds: string[] = [];
+
+    const importOne = async (rawBoard: any) => {
+      // Coerce to our canonical shape.
+      const coerced = this.coerceProjectFile(rawBoard);
+
+      // Avoid overwriting an existing project file: if the ID exists, mint a new one.
+      const existing = await this.readProjectFile(coerced.project.id);
+      let finalProjectId = coerced.project.id;
+      if (existing) {
+        finalProjectId = id();
+        coerced.project.id = finalProjectId;
+        coerced.lists = coerced.lists.map((l) => ({ ...l, projectId: finalProjectId }));
+        coerced.items = coerced.items.map((it) => ({ ...it, projectId: finalProjectId }));
+      }
+
+      await this.writeProjectFile(finalProjectId, coerced);
+      importedProjectIds.push(finalProjectId);
+    };
+
+    const importManyLegacy = async (legacy: LegacyDbData) => {
+      const projects = Array.isArray(legacy?.projects) ? legacy.projects : [];
+      const lists = Array.isArray(legacy?.lists) ? legacy.lists : [];
+      const items = Array.isArray(legacy?.items) ? legacy.items : [];
+
+      for (const p of projects) {
+        const projectId = String((p as any)?.id ?? id());
+        const board: ProjectFileData = {
+          project: {
+            id: projectId,
+            title: String((p as any)?.title ?? "Untitled project"),
+            description: String((p as any)?.description ?? ""),
+            createdAt: String((p as any)?.createdAt ?? nowIso()),
+            updatedAt: String((p as any)?.updatedAt ?? (p as any)?.createdAt ?? nowIso()),
+          },
+          lists: lists
+            .filter((l) => String((l as any)?.projectId ?? "") === projectId)
+            .map((l) => ({ ...l, projectId }))
+            .sort((a, b) => a.order - b.order),
+          items: items
+            .filter((it) => String((it as any)?.projectId ?? "") === projectId)
+            .map((it) => ({ ...it, projectId }))
+            .sort((a, b) => {
+              const aKey = a.listId ?? "";
+              const bKey = b.listId ?? "";
+              if (aKey !== bKey) return aKey.localeCompare(bKey);
+              if (a.order !== b.order) return a.order - b.order;
+              return a.updatedAt.localeCompare(b.updatedAt);
+            }),
+        };
+
+        await importOne(board);
+      }
+    };
+
+    // Serialize imports via the write queue.
+    this.writeQueue = this.writeQueue.then(async () => {
+      if (parsed && typeof parsed === "object" && "project" in parsed) {
+        await importOne(parsed);
+        return;
+      }
+      if (parsed && typeof parsed === "object" && "projects" in parsed) {
+        await importManyLegacy(parsed as LegacyDbData);
+        return;
+      }
+      throw new Error("Unsupported JSON format. Expected a project JSON or legacy db JSON.");
+    });
+
+    await this.writeQueue;
+    return { importedProjectIds };
+  }
+
   async listProjects(): Promise<Project[]> {
-    const data = await this.readData();
-    return [...data.projects].sort((a, b) =>
-      b.updatedAt.localeCompare(a.updatedAt)
-    );
+    await this.ensureInitialized();
+    const ids = await this.listProjectFileIds();
+    const projects: Project[] = [];
+    for (const projectId of ids) {
+      const board = await this.readProjectFile(projectId);
+      if (board) projects.push(board.project);
+    }
+    return projects.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   async listProjectSummaries(): Promise<ProjectSummary[]> {
-    const data = await this.readData();
-
-    const listCountByProjectId = new Map<string, number>();
-    for (const l of data.lists) {
-      listCountByProjectId.set(
-        l.projectId,
-        (listCountByProjectId.get(l.projectId) ?? 0) + 1
-      );
+    await this.ensureInitialized();
+    const ids = await this.listProjectFileIds();
+    const summaries: ProjectSummary[] = [];
+    for (const projectId of ids) {
+      const board = await this.readProjectFile(projectId);
+      if (!board) continue;
+      summaries.push({
+        ...board.project,
+        listCount: board.lists.length,
+        itemCount: board.items.length,
+      });
     }
-
-    const itemCountByProjectId = new Map<string, number>();
-    for (const it of data.items) {
-      itemCountByProjectId.set(
-        it.projectId,
-        (itemCountByProjectId.get(it.projectId) ?? 0) + 1
-      );
-    }
-
-    return [...data.projects]
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .map((p) => ({
-        ...p,
-        listCount: listCountByProjectId.get(p.id) ?? 0,
-        itemCount: itemCountByProjectId.get(p.id) ?? 0,
-      }));
+    return summaries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   async getProject(projectId: string): Promise<Project | null> {
-    const data = await this.readData();
-    return data.projects.find((p) => p.id === projectId) ?? null;
+    await this.ensureInitialized();
+    const board = await this.readProjectFile(projectId);
+    return board?.project ?? null;
   }
 
   async createProject(input: {
@@ -114,29 +333,32 @@ class JsonDb {
     const title = input.title.trim();
     const description = input.description.trim();
     if (!title) throw new Error("Project title is required");
+    await this.ensureInitialized();
 
-    return this.mutate((data) => {
-      const createdAt = nowIso();
-      const project: Project = {
-        id: id(),
-        title,
-        description,
-        createdAt,
-        updatedAt: createdAt,
-      };
-      data.projects.push(project);
-      return project;
+    const createdAt = nowIso();
+    const project: Project = {
+      id: id(),
+      title,
+      description,
+      createdAt,
+      updatedAt: createdAt,
+    };
+
+    // Serialize project creation with the write queue.
+    this.writeQueue = this.writeQueue.then(async () => {
+      const board: ProjectFileData = { project, lists: [], items: [] };
+      await this.writeProjectFile(project.id, board);
     });
+    await this.writeQueue;
+    return project;
   }
 
   async updateProject(input: {
     projectId: string;
     patch: Partial<Pick<Project, "title" | "description">>;
   }): Promise<Project> {
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === input.projectId);
-      if (!project) throw new Error("Project not found");
-
+    return this.mutateProject(input.projectId, (data) => {
+      const project = data.project;
       const patch: any = { ...input.patch };
       if (typeof patch.title === "string") patch.title = patch.title.trim();
       if (typeof patch.description === "string")
@@ -150,50 +372,27 @@ class JsonDb {
   }
 
   async getProjectBoard(projectId: string): Promise<ProjectBoard> {
-    const data = await this.readData();
-    const project = data.projects.find((p) => p.id === projectId);
-    if (!project) throw new Error("Project not found");
+    await this.ensureInitialized();
+    const board = await this.readProjectFile(projectId);
+    if (!board) throw new Error("Project not found");
+    return board;
+  }
 
-    const lists = data.lists
-      .filter((l) => l.projectId === projectId)
-      .sort((a, b) => a.order - b.order);
-
-    const items = data.items
-      .filter((i) => i.projectId === projectId)
-      .sort((a, b) => {
-        // Group by container (loose first), then order.
-        const aKey = a.listId ?? "";
-        const bKey = b.listId ?? "";
-        if (aKey !== bKey) return aKey.localeCompare(bKey);
-        if (a.order !== b.order) return a.order - b.order;
-        return a.updatedAt.localeCompare(b.updatedAt);
+  private normalizeListOrders(data: ProjectFileData) {
+    data.lists
+      .sort((a, b) => a.order - b.order)
+      .forEach((l, idx) => {
+        l.order = idx;
       });
-
-    return { project, lists, items };
   }
 
-  private normalizeListOrders(data: DbData, projectId: string) {
-    const lists = data.lists
-      .filter((l) => l.projectId === projectId)
-      .sort((a, b) => a.order - b.order);
-    lists.forEach((l, idx) => {
-      l.order = idx;
-      l.updatedAt = nowIso();
-    });
-  }
-
-  private normalizeItemOrders(
-    data: DbData,
-    projectId: string,
-    listId: string | null
-  ) {
-    const items = data.items
-      .filter((i) => i.projectId === projectId && i.listId === listId)
-      .sort((a, b) => a.order - b.order);
-    items.forEach((it, idx) => {
-      it.order = idx;
-      it.updatedAt = nowIso();
-    });
+  private normalizeItemOrders(data: ProjectFileData, listId: string | null) {
+    data.items
+      .filter((i) => i.listId === listId)
+      .sort((a, b) => a.order - b.order)
+      .forEach((it, idx) => {
+        it.order = idx;
+      });
   }
 
   async createList(input: {
@@ -205,17 +404,13 @@ class JsonDb {
     const description = input.description.trim();
     if (!title) throw new Error("List title is required");
 
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === input.projectId);
-      if (!project) throw new Error("Project not found");
-
+    return this.mutateProject(input.projectId, (data) => {
+      const project = data.project;
       const createdAt = nowIso();
       const order =
         Math.max(
           -1,
-          ...data.lists
-            .filter((l) => l.projectId === input.projectId)
-            .map((l) => l.order)
+          ...data.lists.map((l) => l.order)
         ) + 1;
       const list: List = {
         id: id(),
@@ -237,13 +432,9 @@ class JsonDb {
     listId: string;
     patch: Partial<Pick<List, "title" | "description">>;
   }) {
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === input.projectId);
-      if (!project) throw new Error("Project not found");
-
-      const list = data.lists.find(
-        (l) => l.id === input.listId && l.projectId === input.projectId
-      );
+    return this.mutateProject(input.projectId, (data) => {
+      const project = data.project;
+      const list = data.lists.find((l) => l.id === input.listId);
       if (!list) throw new Error("List not found");
 
       const patch: any = { ...input.patch };
@@ -263,31 +454,22 @@ class JsonDb {
     projectId: string;
     listId: string;
   }): Promise<void> {
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === input.projectId);
-      if (!project) throw new Error("Project not found");
-
-      const list = data.lists.find(
-        (l) => l.id === input.listId && l.projectId === input.projectId
-      );
+    return this.mutateProject(input.projectId, (data) => {
+      const project = data.project;
+      const list = data.lists.find((l) => l.id === input.listId);
       if (!list) throw new Error("List not found");
 
       // Move items in this list to Loose.
       for (const item of data.items) {
-        if (
-          item.projectId === input.projectId &&
-          item.listId === input.listId
-        ) {
+        if (item.listId === input.listId) {
           item.listId = null;
           item.updatedAt = nowIso();
         }
       }
 
-      data.lists = data.lists.filter(
-        (l) => !(l.projectId === input.projectId && l.id === input.listId)
-      );
-      this.normalizeListOrders(data, input.projectId);
-      this.normalizeItemOrders(data, input.projectId, null);
+      data.lists = data.lists.filter((l) => l.id !== input.listId);
+      this.normalizeListOrders(data);
+      this.normalizeItemOrders(data, null);
       project.updatedAt = nowIso();
     });
   }
@@ -296,12 +478,9 @@ class JsonDb {
     projectId: string;
     listIdsInOrder: string[];
   }): Promise<List[]> {
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === input.projectId);
-      if (!project) throw new Error("Project not found");
-
-      const lists = data.lists.filter((l) => l.projectId === input.projectId);
-      const idToList = new Map(lists.map((l) => [l.id, l] as const));
+    return this.mutateProject(input.projectId, (data) => {
+      const project = data.project;
+      const idToList = new Map(data.lists.map((l) => [l.id, l] as const));
 
       input.listIdsInOrder.forEach((listId, idx) => {
         const list = idToList.get(listId);
@@ -310,11 +489,9 @@ class JsonDb {
         list.updatedAt = nowIso();
       });
 
-      this.normalizeListOrders(data, input.projectId);
+      this.normalizeListOrders(data);
       project.updatedAt = nowIso();
-      return data.lists
-        .filter((l) => l.projectId === input.projectId)
-        .sort((a, b) => a.order - b.order);
+      return [...data.lists].sort((a, b) => a.order - b.order);
     });
   }
 
@@ -328,13 +505,10 @@ class JsonDb {
     const description = input.description.trim();
     if (!label) throw new Error("Item label is required");
 
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === input.projectId);
-      if (!project) throw new Error("Project not found");
+    return this.mutateProject(input.projectId, (data) => {
+      const project = data.project;
       if (input.listId) {
-        const list = data.lists.find(
-          (l) => l.id === input.listId && l.projectId === input.projectId
-        );
+        const list = data.lists.find((l) => l.id === input.listId);
         if (!list) throw new Error("List not found");
       }
 
@@ -342,12 +516,7 @@ class JsonDb {
       const order =
         Math.max(
           -1,
-          ...data.items
-            .filter(
-              (i) =>
-                i.projectId === input.projectId && i.listId === input.listId
-            )
-            .map((i) => i.order)
+          ...data.items.filter((i) => i.listId === input.listId).map((i) => i.order)
         ) + 1;
       const item: Item = {
         id: id(),
@@ -370,13 +539,9 @@ class JsonDb {
     itemId: string;
     patch: Partial<Pick<Item, "label" | "description">>;
   }): Promise<Item> {
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === input.projectId);
-      if (!project) throw new Error("Project not found");
-
-      const item = data.items.find(
-        (i) => i.id === input.itemId && i.projectId === input.projectId
-      );
+    return this.mutateProject(input.projectId, (data) => {
+      const project = data.project;
+      const item = data.items.find((i) => i.id === input.itemId);
       if (!item) throw new Error("Item not found");
 
       const patch: any = { ...input.patch };
@@ -396,20 +561,14 @@ class JsonDb {
     projectId: string;
     itemId: string;
   }): Promise<void> {
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === input.projectId);
-      if (!project) throw new Error("Project not found");
-
-      const item = data.items.find(
-        (i) => i.id === input.itemId && i.projectId === input.projectId
-      );
+    return this.mutateProject(input.projectId, (data) => {
+      const project = data.project;
+      const item = data.items.find((i) => i.id === input.itemId);
       if (!item) throw new Error("Item not found");
 
       const sourceListId = item.listId;
-      data.items = data.items.filter(
-        (i) => !(i.projectId === input.projectId && i.id === input.itemId)
-      );
-      this.normalizeItemOrders(data, input.projectId, sourceListId);
+      data.items = data.items.filter((i) => i.id !== input.itemId);
+      this.normalizeItemOrders(data, sourceListId);
       project.updatedAt = nowIso();
     });
   }
@@ -420,19 +579,13 @@ class JsonDb {
     toListId: string | null;
     toIndex: number;
   }): Promise<Item> {
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === input.projectId);
-      if (!project) throw new Error("Project not found");
-
-      const item = data.items.find(
-        (i) => i.id === input.itemId && i.projectId === input.projectId
-      );
+    return this.mutateProject(input.projectId, (data) => {
+      const project = data.project;
+      const item = data.items.find((i) => i.id === input.itemId);
       if (!item) throw new Error("Item not found");
 
       if (input.toListId) {
-        const list = data.lists.find(
-          (l) => l.id === input.toListId && l.projectId === input.projectId
-        );
+        const list = data.lists.find((l) => l.id === input.toListId);
         if (!list) throw new Error("List not found");
       }
 
@@ -465,7 +618,7 @@ class JsonDb {
 
       // Renumber the source container too (if different).
       if (fromListId !== toListId) {
-        this.normalizeItemOrders(data, input.projectId, fromListId);
+        this.normalizeItemOrders(data, fromListId);
       }
 
       project.updatedAt = nowIso();

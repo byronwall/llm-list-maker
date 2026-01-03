@@ -9,6 +9,11 @@ export const createProject = action(async (input: { title: string; description: 
   return await db().createProject(input);
 }, "projects:create");
 
+export const importProjectJson = action(async (input: { jsonText: string }) => {
+  "use server";
+  return await db().importProjectJsonText(input.jsonText);
+}, "projects:importJson");
+
 export const updateProject = action(
   async (input: { projectId: string; patch: { title?: string; description?: string } }) => {
     "use server";
