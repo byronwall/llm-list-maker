@@ -85,7 +85,8 @@ export const itemRowClass = (isDropTarget: boolean, isDragging: boolean) =>
   css({
     position: "relative",
     rounded: "md",
-    px: "2",
+    pl: "2",
+    pr: "10",
     py: "2",
     bg: "gray.subtle.bg",
     borderWidth: "1px",
@@ -99,6 +100,17 @@ export const itemRowClass = (isDropTarget: boolean, isDragging: boolean) =>
     opacity: isDragging ? 0.35 : 1,
     // Progressive disclosure for item-level affordances.
     "& .itemActions": {
+      position: "absolute",
+      right: "2",
+      top: "2",
+      display: "flex",
+      alignItems: "center",
+      gap: "1",
+      rounded: "md",
+      bg: "gray.surface.bg",
+      borderWidth: "1px",
+      borderColor: "border",
+      p: "0.5",
       opacity: 0,
       pointerEvents: "none",
       transitionProperty: "opacity",

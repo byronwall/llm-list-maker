@@ -19,6 +19,7 @@
   - If a component/file is trending **beyond ~200 lines**, plan to **split early** (before it becomes a 1000+ line file).
   - Split into **separate files** when possible (subcomponents, hooks, helpers, types).
   - Avoid excessive **prop drilling**; it’s OK to create a **shared context** (or a small store) when multiple siblings/levels need the same state.
+  - Do not extract CSS-in-JSS styles into a separate file unless they are used in multiple components. ALWAYS prefer keeping styles next to their users.
 
 - **UI + styling**
 

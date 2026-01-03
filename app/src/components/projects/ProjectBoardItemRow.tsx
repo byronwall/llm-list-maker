@@ -37,7 +37,9 @@ export function ProjectBoardItemRow(props: {
         if (!dragged) return;
 
         const destListId = props.listId;
-        const destItems = props.getColumnItems().filter((x) => x.id !== dragged);
+        const destItems = props
+          .getColumnItems()
+          .filter((x) => x.id !== dragged);
         const targetIdx = destItems.findIndex((x) => x.id === props.item.id);
         if (targetIdx < 0) return;
 
@@ -65,8 +67,28 @@ export function ProjectBoardItemRow(props: {
         />
       </Show>
 
-      <HStack justify="space-between" alignItems="start" gap="2">
-        <HStack gap="2" alignItems="center">
+      {/* Absolute overlay actions (shown on hover/focus-within) */}
+      <HStack gap="1" class="itemActions">
+        <IconButton
+          size="2xs"
+          variant="plain"
+          aria-label="Edit item"
+          onClick={() => pb.startEditItem(props.item)}
+        >
+          <PencilIcon />
+        </IconButton>
+        <IconButton
+          size="2xs"
+          variant="plain"
+          aria-label="Delete item"
+          onClick={() => void pb.deleteItem(props.item.id)}
+        >
+          <Trash2Icon />
+        </IconButton>
+      </HStack>
+
+      <HStack alignItems="start" gap="2" minW="0">
+        <HStack gap="2" alignItems="center" minW="0">
           <Box
             as="span"
             draggable
@@ -93,26 +115,28 @@ export function ProjectBoardItemRow(props: {
           >
             ⋮⋮
           </Box>
-          <Box class={css({ fontWeight: "medium" })}>{props.item.label}</Box>
-        </HStack>
-
-        <HStack gap="1" class="itemActions">
-          <IconButton
-            size="2xs"
-            variant="plain"
-            aria-label="Edit item"
-            onClick={() => pb.startEditItem(props.item)}
+          <VStack
+            alignItems="start"
+            gap="0.5"
+            minW="0"
+            class={css({ lineHeight: "1.2" })}
           >
-            <PencilIcon />
-          </IconButton>
-          <IconButton
-            size="2xs"
-            variant="plain"
-            aria-label="Delete item"
-            onClick={() => void pb.deleteItem(props.item.id)}
-          >
-            <Trash2Icon />
-          </IconButton>
+            <Box class={css({ fontWeight: "medium", minW: 0, lineClamp: "2" })}>
+              {props.item.label}
+            </Box>
+            <Show when={props.item.description.trim().length > 0}>
+              <Box
+                class={css({
+                  color: "fg.muted",
+                  fontSize: "xs",
+                  minW: 0,
+                  lineClamp: "2",
+                })}
+              >
+                {props.item.description}
+              </Box>
+            </Show>
+          </VStack>
         </HStack>
       </HStack>
 
@@ -131,7 +155,11 @@ export function ProjectBoardItemRow(props: {
             <Button size="sm" variant="outline" onClick={pb.cancelEditItem}>
               Cancel
             </Button>
-            <Button size="sm" variant="solid" onClick={() => void pb.saveEditItem()}>
+            <Button
+              size="sm"
+              variant="solid"
+              onClick={() => void pb.saveEditItem()}
+            >
               Save
             </Button>
           </HStack>
@@ -140,5 +168,3 @@ export function ProjectBoardItemRow(props: {
     </Box>
   );
 }
-
-
