@@ -1,31 +1,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type {
-  AIRun,
-  ExportArtifact,
-  Feature,
-  FeatureDependency,
-  JourneyStep,
-  Project,
-  ProjectBoard,
-  ResearchSource,
-  UIArea,
-} from "~/lib/domain";
+import type { Item, List, Project, ProjectBoard } from "~/lib/domain";
 
 type DbData = {
   projects: Project[];
-  journeySteps: JourneyStep[];
-  uiAreas: UIArea[];
-  features: Feature[];
-  featureDependencies: FeatureDependency[];
-  researchSources: ResearchSource[];
-  exportArtifacts: ExportArtifact[];
-  aiRuns: AIRun[];
+  lists: List[];
+  items: Item[];
 };
-
-const DEFAULT_JOURNEY_STEPS = ["Onboarding", "Core Action", "Review / Share"];
-const DEFAULT_UI_AREAS = ["Landing", "Auth", "Dashboard", "Settings"];
 
 const nowIso = () => new Date().toISOString();
 const id = () => crypto.randomUUID();
@@ -39,13 +21,8 @@ function getDbFilePath() {
 function emptyData(): DbData {
   return {
     projects: [],
-    journeySteps: [],
-    uiAreas: [],
-    features: [],
-    featureDependencies: [],
-    researchSources: [],
-    exportArtifacts: [],
-    aiRuns: [],
+    lists: [],
+    items: [],
   };
 }
 
@@ -94,40 +71,21 @@ class JsonDb {
     return data.projects.find((p) => p.id === projectId) ?? null;
   }
 
-  async createProject(input: { name: string; ideaRaw: string }): Promise<Project> {
-    const name = input.name.trim();
-    const ideaRaw = input.ideaRaw.trim();
-    if (!name) throw new Error("Project name is required");
+  async createProject(input: { title: string; description: string }): Promise<Project> {
+    const title = input.title.trim();
+    const description = input.description.trim();
+    if (!title) throw new Error("Project title is required");
 
     return this.mutate((data) => {
       const createdAt = nowIso();
       const project: Project = {
         id: id(),
-        name,
-        ideaRaw,
+        title,
+        description,
         createdAt,
         updatedAt: createdAt,
       };
       data.projects.push(project);
-
-      DEFAULT_JOURNEY_STEPS.forEach((stepName, idx) => {
-        data.journeySteps.push({
-          id: id(),
-          projectId: project.id,
-          name: stepName,
-          order: idx,
-        });
-      });
-
-      DEFAULT_UI_AREAS.forEach((areaName, idx) => {
-        data.uiAreas.push({
-          id: id(),
-          projectId: project.id,
-          name: areaName,
-          order: idx,
-        });
-      });
-
       return project;
     });
   }
@@ -137,169 +95,250 @@ class JsonDb {
     const project = data.projects.find((p) => p.id === projectId);
     if (!project) throw new Error("Project not found");
 
-    const journeySteps = data.journeySteps
-      .filter((s) => s.projectId === projectId)
+    const lists = data.lists
+      .filter((l) => l.projectId === projectId)
       .sort((a, b) => a.order - b.order);
 
-    const uiAreas = data.uiAreas
-      .filter((a) => a.projectId === projectId)
+    const items = data.items
+      .filter((i) => i.projectId === projectId)
+      .sort((a, b) => {
+        // Group by container (loose first), then order.
+        const aKey = a.listId ?? "";
+        const bKey = b.listId ?? "";
+        if (aKey !== bKey) return aKey.localeCompare(bKey);
+        if (a.order !== b.order) return a.order - b.order;
+        return a.updatedAt.localeCompare(b.updatedAt);
+      });
+
+    return { project, lists, items };
+  }
+
+  private normalizeListOrders(data: DbData, projectId: string) {
+    const lists = data.lists
+      .filter((l) => l.projectId === projectId)
       .sort((a, b) => a.order - b.order);
-
-    const features = data.features
-      .filter((f) => f.projectId === projectId)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-
-    return { project, journeySteps, uiAreas, features };
-  }
-
-  async addJourneyStep(projectId: string, name: string): Promise<JourneyStep> {
-    const stepName = name.trim();
-    if (!stepName) throw new Error("Journey step name is required");
-
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === projectId);
-      if (!project) throw new Error("Project not found");
-
-      const order =
-        Math.max(-1, ...data.journeySteps.filter((s) => s.projectId === projectId).map((s) => s.order)) + 1;
-
-      const step: JourneyStep = { id: id(), projectId, name: stepName, order };
-      data.journeySteps.push(step);
-      project.updatedAt = nowIso();
-      return step;
+    lists.forEach((l, idx) => {
+      l.order = idx;
+      l.updatedAt = nowIso();
     });
   }
 
-  async updateJourneyStep(input: { projectId: string; journeyStepId: string; name: string }): Promise<JourneyStep> {
-    const name = input.name.trim();
-    if (!name) throw new Error("Journey step name is required");
-
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === input.projectId);
-      if (!project) throw new Error("Project not found");
-
-      const step = data.journeySteps.find((s) => s.id === input.journeyStepId && s.projectId === input.projectId);
-      if (!step) throw new Error("Journey step not found");
-
-      step.name = name;
-      project.updatedAt = nowIso();
-      return step;
+  private normalizeItemOrders(data: DbData, projectId: string, listId: string | null) {
+    const items = data.items
+      .filter((i) => i.projectId === projectId && i.listId === listId)
+      .sort((a, b) => a.order - b.order);
+    items.forEach((it, idx) => {
+      it.order = idx;
+      it.updatedAt = nowIso();
     });
   }
 
-  async addUIArea(projectId: string, name: string): Promise<UIArea> {
-    const areaName = name.trim();
-    if (!areaName) throw new Error("UI area name is required");
-
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === projectId);
-      if (!project) throw new Error("Project not found");
-
-      const order =
-        Math.max(-1, ...data.uiAreas.filter((a) => a.projectId === projectId).map((a) => a.order)) + 1;
-
-      const area: UIArea = { id: id(), projectId, name: areaName, order };
-      data.uiAreas.push(area);
-      project.updatedAt = nowIso();
-      return area;
-    });
-  }
-
-  async updateUIArea(input: { projectId: string; uiAreaId: string; name: string }): Promise<UIArea> {
-    const name = input.name.trim();
-    if (!name) throw new Error("UI area name is required");
-
-    return this.mutate((data) => {
-      const project = data.projects.find((p) => p.id === input.projectId);
-      if (!project) throw new Error("Project not found");
-
-      const area = data.uiAreas.find((a) => a.id === input.uiAreaId && a.projectId === input.projectId);
-      if (!area) throw new Error("UI area not found");
-
-      area.name = name;
-      project.updatedAt = nowIso();
-      return area;
-    });
-  }
-
-  async createFeature(input: {
-    projectId: string;
-    title: string;
-    description: string;
-    journeyStepId: string | null;
-    uiAreaId: string | null;
-    phase: Feature["phase"];
-    status: Feature["status"];
-  }): Promise<Feature> {
+  async createList(input: { projectId: string; title: string; description: string }): Promise<List> {
     const title = input.title.trim();
     const description = input.description.trim();
-    if (!title) throw new Error("Feature title is required");
+    if (!title) throw new Error("List title is required");
 
     return this.mutate((data) => {
       const project = data.projects.find((p) => p.id === input.projectId);
       if (!project) throw new Error("Project not found");
 
       const createdAt = nowIso();
-      const feature: Feature = {
+      const order = Math.max(-1, ...data.lists.filter((l) => l.projectId === input.projectId).map((l) => l.order)) + 1;
+      const list: List = {
         id: id(),
         projectId: input.projectId,
         title,
         description,
-        journeyStepId: input.journeyStepId,
-        uiAreaId: input.uiAreaId,
-        phase: input.phase,
-        status: input.status,
-        notes: null,
-        acceptanceCriteria: [],
-        tags: [],
+        order,
         createdAt,
         updatedAt: createdAt,
       };
-      data.features.push(feature);
+      data.lists.push(list);
       project.updatedAt = nowIso();
-      return feature;
+      return list;
     });
   }
 
-  async updateFeature(input: {
-    projectId: string;
-    featureId: string;
-    patch: Partial<
-      Pick<
-        Feature,
-        "title" | "description" | "journeyStepId" | "uiAreaId" | "phase" | "status" | "notes" | "tags" | "acceptanceCriteria"
-      >
-    >;
-  }): Promise<Feature> {
+  async updateList(input: { projectId: string; listId: string; patch: Partial<Pick<List, "title" | "description">> }) {
     return this.mutate((data) => {
       const project = data.projects.find((p) => p.id === input.projectId);
       if (!project) throw new Error("Project not found");
 
-      const feature = data.features.find((f) => f.id === input.featureId && f.projectId === input.projectId);
-      if (!feature) throw new Error("Feature not found");
+      const list = data.lists.find((l) => l.id === input.listId && l.projectId === input.projectId);
+      if (!list) throw new Error("List not found");
 
-      const patch = { ...input.patch } as any;
+      const patch: any = { ...input.patch };
       if (typeof patch.title === "string") patch.title = patch.title.trim();
       if (typeof patch.description === "string") patch.description = patch.description.trim();
+      if (patch.title === "") throw new Error("List title is required");
 
-      Object.assign(feature, patch);
-      feature.updatedAt = nowIso();
+      Object.assign(list, patch);
+      list.updatedAt = nowIso();
       project.updatedAt = nowIso();
-      return feature;
+      return list;
     });
   }
 
-  async deleteFeature(input: { projectId: string; featureId: string }): Promise<void> {
+  async deleteList(input: { projectId: string; listId: string }): Promise<void> {
     return this.mutate((data) => {
       const project = data.projects.find((p) => p.id === input.projectId);
       if (!project) throw new Error("Project not found");
 
-      data.features = data.features.filter((f) => !(f.projectId === input.projectId && f.id === input.featureId));
-      data.featureDependencies = data.featureDependencies.filter(
-        (d) => !(d.projectId === input.projectId && (d.fromFeatureId === input.featureId || d.toFeatureId === input.featureId)),
-      );
+      const list = data.lists.find((l) => l.id === input.listId && l.projectId === input.projectId);
+      if (!list) throw new Error("List not found");
+
+      // Move items in this list to Loose.
+      for (const item of data.items) {
+        if (item.projectId === input.projectId && item.listId === input.listId) {
+          item.listId = null;
+          item.updatedAt = nowIso();
+        }
+      }
+
+      data.lists = data.lists.filter((l) => !(l.projectId === input.projectId && l.id === input.listId));
+      this.normalizeListOrders(data, input.projectId);
+      this.normalizeItemOrders(data, input.projectId, null);
+      project.updatedAt = nowIso();
+    });
+  }
+
+  async reorderLists(input: { projectId: string; listIdsInOrder: string[] }): Promise<List[]> {
+    return this.mutate((data) => {
+      const project = data.projects.find((p) => p.id === input.projectId);
+      if (!project) throw new Error("Project not found");
+
+      const lists = data.lists.filter((l) => l.projectId === input.projectId);
+      const idToList = new Map(lists.map((l) => [l.id, l] as const));
+
+      input.listIdsInOrder.forEach((listId, idx) => {
+        const list = idToList.get(listId);
+        if (!list) return;
+        list.order = idx;
+        list.updatedAt = nowIso();
+      });
+
+      this.normalizeListOrders(data, input.projectId);
+      project.updatedAt = nowIso();
+      return data.lists.filter((l) => l.projectId === input.projectId).sort((a, b) => a.order - b.order);
+    });
+  }
+
+  async createItem(input: {
+    projectId: string;
+    listId: string | null;
+    label: string;
+    description: string;
+  }): Promise<Item> {
+    const label = input.label.trim();
+    const description = input.description.trim();
+    if (!label) throw new Error("Item label is required");
+
+    return this.mutate((data) => {
+      const project = data.projects.find((p) => p.id === input.projectId);
+      if (!project) throw new Error("Project not found");
+      if (input.listId) {
+        const list = data.lists.find((l) => l.id === input.listId && l.projectId === input.projectId);
+        if (!list) throw new Error("List not found");
+      }
+
+      const createdAt = nowIso();
+      const order =
+        Math.max(-1, ...data.items.filter((i) => i.projectId === input.projectId && i.listId === input.listId).map((i) => i.order)) +
+        1;
+      const item: Item = {
+        id: id(),
+        projectId: input.projectId,
+        listId: input.listId,
+        label,
+        description,
+        order,
+        createdAt,
+        updatedAt: createdAt,
+      };
+      data.items.push(item);
+      project.updatedAt = nowIso();
+      return item;
+    });
+  }
+
+  async updateItem(input: {
+    projectId: string;
+    itemId: string;
+    patch: Partial<Pick<Item, "label" | "description">>;
+  }): Promise<Item> {
+    return this.mutate((data) => {
+      const project = data.projects.find((p) => p.id === input.projectId);
+      if (!project) throw new Error("Project not found");
+
+      const item = data.items.find((i) => i.id === input.itemId && i.projectId === input.projectId);
+      if (!item) throw new Error("Item not found");
+
+      const patch: any = { ...input.patch };
+      if (typeof patch.label === "string") patch.label = patch.label.trim();
+      if (typeof patch.description === "string") patch.description = patch.description.trim();
+      if (patch.label === "") throw new Error("Item label is required");
+
+      Object.assign(item, patch);
+      item.updatedAt = nowIso();
+      project.updatedAt = nowIso();
+      return item;
+    });
+  }
+
+  async deleteItem(input: { projectId: string; itemId: string }): Promise<void> {
+    return this.mutate((data) => {
+      const project = data.projects.find((p) => p.id === input.projectId);
+      if (!project) throw new Error("Project not found");
+
+      const item = data.items.find((i) => i.id === input.itemId && i.projectId === input.projectId);
+      if (!item) throw new Error("Item not found");
+
+      const sourceListId = item.listId;
+      data.items = data.items.filter((i) => !(i.projectId === input.projectId && i.id === input.itemId));
+      this.normalizeItemOrders(data, input.projectId, sourceListId);
+      project.updatedAt = nowIso();
+    });
+  }
+
+  async moveItem(input: { projectId: string; itemId: string; toListId: string | null; toIndex: number }): Promise<Item> {
+    return this.mutate((data) => {
+      const project = data.projects.find((p) => p.id === input.projectId);
+      if (!project) throw new Error("Project not found");
+
+      const item = data.items.find((i) => i.id === input.itemId && i.projectId === input.projectId);
+      if (!item) throw new Error("Item not found");
+
+      if (input.toListId) {
+        const list = data.lists.find((l) => l.id === input.toListId && l.projectId === input.projectId);
+        if (!list) throw new Error("List not found");
+      }
+
+      const fromListId = item.listId;
+      const toListId = input.toListId;
+
+      // Remove item from its source ordering by temporarily setting to a sentinel order.
+      item.listId = toListId;
+      item.order = Number.MAX_SAFE_INTEGER;
+      item.updatedAt = nowIso();
+
+      // Build destination list, insert at index, then renumber.
+      const destItems = data.items
+        .filter((i) => i.projectId === input.projectId && i.listId === toListId && i.id !== item.id)
+        .sort((a, b) => a.order - b.order);
+      const insertAt = Math.max(0, Math.min(destItems.length, Math.floor(input.toIndex)));
+      destItems.splice(insertAt, 0, item);
+      destItems.forEach((it, idx) => {
+        it.order = idx;
+        it.updatedAt = nowIso();
+      });
+
+      // Renumber the source container too (if different).
+      if (fromListId !== toListId) {
+        this.normalizeItemOrders(data, input.projectId, fromListId);
+      }
 
       project.updatedAt = nowIso();
+      return item;
     });
   }
 }

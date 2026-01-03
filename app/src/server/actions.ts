@@ -1,141 +1,200 @@
 import { action } from "@solidjs/router";
 
-import type { Feature, FeatureStatus, Phase } from "~/lib/domain";
 import { db } from "~/server/db";
-import { generateCoreSectionSuggestions, type CoreSection } from "~/server/ai";
+import { reviewBoard, suggestItems, suggestLists, suggestReorg } from "~/server/ai";
 
-export const createProject = action(async (input: { name: string; ideaRaw: string }) => {
+export const createProject = action(async (input: { title: string; description: string }) => {
   "use server";
   return await db().createProject(input);
 }, "projects:create");
 
-export const addJourneyStep = action(async (input: { projectId: string; name: string }) => {
+export const createList = action(async (input: { projectId: string; title: string; description: string }) => {
   "use server";
-  return await db().addJourneyStep(input.projectId, input.name);
-}, "project:journeyStep:add");
+  return await db().createList(input);
+}, "project:list:create");
 
-export const updateJourneyStep = action(
-  async (input: { projectId: string; journeyStepId: string; name: string }) => {
+export const updateList = action(
+  async (input: { projectId: string; listId: string; patch: { title?: string; description?: string } }) => {
     "use server";
-    return await db().updateJourneyStep(input);
+    return await db().updateList(input);
   },
-  "project:journeyStep:update",
+  "project:list:update",
 );
 
-export const addUIArea = action(async (input: { projectId: string; name: string }) => {
+export const deleteList = action(async (input: { projectId: string; listId: string }) => {
   "use server";
-  return await db().addUIArea(input.projectId, input.name);
-}, "project:uiArea:add");
+  await db().deleteList(input);
+}, "project:list:delete");
 
-export const updateUIArea = action(
-  async (input: { projectId: string; uiAreaId: string; name: string }) => {
+export const reorderLists = action(async (input: { projectId: string; listIdsInOrder: string[] }) => {
+  "use server";
+  return await db().reorderLists(input);
+}, "project:list:reorder");
+
+export const createItem = action(
+  async (input: { projectId: string; listId: string | null; label: string; description: string }) => {
     "use server";
-    return await db().updateUIArea(input);
+    return await db().createItem(input);
   },
-  "project:uiArea:update",
+  "project:item:create",
 );
 
-export const createFeature = action(
-  async (input: {
-    projectId: string;
-    title: string;
-    description: string;
-    journeyStepId: string | null;
-    uiAreaId: string | null;
-    phase: Phase;
-    status: FeatureStatus;
-  }) => {
+export const updateItem = action(
+  async (input: { projectId: string; itemId: string; patch: { label?: string; description?: string } }) => {
     "use server";
-    return await db().createFeature(input);
+    return await db().updateItem(input);
   },
-  "project:feature:create",
+  "project:item:update",
 );
 
-export const updateFeature = action(
-  async (input: { projectId: string; featureId: string; patch: Partial<Feature> }) => {
+export const deleteItem = action(async (input: { projectId: string; itemId: string }) => {
+  "use server";
+  await db().deleteItem(input);
+}, "project:item:delete");
+
+export const moveItem = action(
+  async (input: { projectId: string; itemId: string; toListId: string | null; toIndex: number }) => {
     "use server";
-    return await db().updateFeature({
+    return await db().moveItem(input);
+  },
+  "project:item:move",
+);
+
+export const aiSuggestLists = action(async (input: { projectId: string }) => {
+  "use server";
+  const board = await db().getProjectBoard(input.projectId);
+  const aiResult = await suggestLists({
+    projectTitle: board.project.title,
+    projectDescription: board.project.description,
+    existingListTitles: board.lists.map((l) => l.title),
+  });
+
+  const existing = new Set(board.lists.map((l) => l.title.toLowerCase()));
+  const created = [];
+
+  const lists = (aiResult.object as any).lists as { title: string; description: string }[];
+  for (const l of lists) {
+    const title = String(l?.title ?? "").trim();
+    const description = String(l?.description ?? "").trim();
+    if (!title) continue;
+    if (existing.has(title.toLowerCase())) continue;
+    created.push(await db().createList({ projectId: input.projectId, title, description }));
+    existing.add(title.toLowerCase());
+  }
+
+  return { createdCount: created.length, created };
+}, "project:ai:suggestLists");
+
+export const aiSuggestItems = action(async (input: { projectId: string }) => {
+  "use server";
+  const board = await db().getProjectBoard(input.projectId);
+  const aiResult = await suggestItems({
+    projectTitle: board.project.title,
+    projectDescription: board.project.description,
+    lists: board.lists.map((l) => ({ title: l.title, description: l.description })),
+    existingItemLabels: board.items.map((i) => i.label),
+  });
+
+  const existingLabels = new Set(board.items.map((i) => i.label.toLowerCase()));
+  const listByTitle = new Map(board.lists.map((l) => [l.title.toLowerCase(), l] as const));
+  const created = [];
+
+  const items = (aiResult.object as any).items as { label: string; description: string; listTitleOrLoose: string }[];
+  for (const it of items) {
+    const label = String(it?.label ?? "").trim();
+    const description = String(it?.description ?? "").trim();
+    const listTitleOrLoose = String(it?.listTitleOrLoose ?? "").trim();
+    if (!label) continue;
+    if (existingLabels.has(label.toLowerCase())) continue;
+
+    const isLoose = listTitleOrLoose.toLowerCase() === "loose";
+    const list = isLoose ? null : listByTitle.get(listTitleOrLoose.toLowerCase()) ?? null;
+
+    created.push(
+      await db().createItem({
+        projectId: input.projectId,
+        listId: list?.id ?? null,
+        label,
+        description,
+      }),
+    );
+    existingLabels.add(label.toLowerCase());
+  }
+
+  return { createdCount: created.length, created };
+}, "project:ai:suggestItems");
+
+export const aiReorganizeBoard = action(async (input: { projectId: string }) => {
+  "use server";
+  const board = await db().getProjectBoard(input.projectId);
+
+  const listByTitle = new Map(board.lists.map((l) => [l.title.toLowerCase(), l] as const));
+  const itemByLabel = new Map(board.items.map((i) => [i.label.toLowerCase(), i] as const));
+  const destCounts = new Map<string, number>();
+
+  // Initialize destination counts using current board.
+  for (const item of board.items) {
+    const key = item.listId ?? "LOOSE";
+    destCounts.set(key, (destCounts.get(key) ?? 0) + 1);
+  }
+
+  const aiResult = await suggestReorg({
+    projectTitle: board.project.title,
+    projectDescription: board.project.description,
+    lists: board.lists.map((l) => ({ title: l.title, description: l.description })),
+    items: board.items.map((i) => ({
+      label: i.label,
+      description: i.description,
+      listTitleOrLoose: i.listId ? board.lists.find((l) => l.id === i.listId)?.title ?? "Loose" : "Loose",
+    })),
+  });
+
+  const moves = (aiResult.object as any).moves as { itemLabel: string; targetListTitleOrLoose: string; rationale?: string }[];
+  const applied = [];
+  for (const m of moves) {
+    const itemLabel = String(m?.itemLabel ?? "").trim();
+    const target = String(m?.targetListTitleOrLoose ?? "").trim();
+    if (!itemLabel || !target) continue;
+
+    const item = itemByLabel.get(itemLabel.toLowerCase());
+    if (!item) continue;
+
+    const isLoose = target.toLowerCase() === "loose";
+    const list = isLoose ? null : listByTitle.get(target.toLowerCase()) ?? null;
+    const destKey = list?.id ?? "LOOSE";
+    const toIndex = destCounts.get(destKey) ?? 0;
+
+    await db().moveItem({
       projectId: input.projectId,
-      featureId: input.featureId,
-      patch: input.patch,
+      itemId: item.id,
+      toListId: list?.id ?? null,
+      toIndex,
     });
-  },
-  "project:feature:update",
-);
+    destCounts.set(destKey, toIndex + 1);
+    applied.push({ itemId: item.id, toListId: list?.id ?? null, toIndex, rationale: m?.rationale ?? null });
+  }
 
-export const deleteFeature = action(async (input: { projectId: string; featureId: string }) => {
+  return { appliedCount: applied.length, applied };
+}, "project:ai:reorganize");
+
+export const aiReviewBoard = action(async (input: { projectId: string }) => {
   "use server";
-  await db().deleteFeature(input);
-}, "project:feature:delete");
+  const board = await db().getProjectBoard(input.projectId);
+  const listTitleById = new Map(board.lists.map((l) => [l.id, l.title] as const));
 
-export const generateCoreSection = action(
-  async (input: { projectId: string; section: CoreSection }) => {
-    "use server";
+  const aiResult = await reviewBoard({
+    projectTitle: board.project.title,
+    projectDescription: board.project.description,
+    lists: board.lists.map((l) => ({ title: l.title, description: l.description })),
+    items: board.items.map((i) => ({
+      label: i.label,
+      description: i.description,
+      listTitleOrLoose: i.listId ? listTitleById.get(i.listId) ?? "Loose" : "Loose",
+    })),
+  });
 
-    const board = await db().getProjectBoard(input.projectId);
-
-    const aiResult = await generateCoreSectionSuggestions({
-      section: input.section,
-      projectName: board.project.name,
-      ideaRaw: board.project.ideaRaw,
-      existingJourneySteps: board.journeySteps.map((s) => s.name),
-      existingUIAreas: board.uiAreas.map((a) => a.name),
-      existingFeatureTitles: board.features.map((f) => f.title),
-    });
-
-    if (input.section === "journeySteps") {
-      const names = (aiResult.object as any).items as string[];
-      const created = [];
-      const existing = new Set(board.journeySteps.map((s) => s.name.toLowerCase()));
-      for (const raw of names) {
-        const name = String(raw ?? "").trim();
-        if (!name) continue;
-        if (existing.has(name.toLowerCase())) continue;
-        created.push(await db().addJourneyStep(input.projectId, name));
-        existing.add(name.toLowerCase());
-      }
-      return { section: input.section, createdCount: created.length, created };
-    }
-
-    if (input.section === "uiAreas") {
-      const names = (aiResult.object as any).items as string[];
-      const created = [];
-      const existing = new Set(board.uiAreas.map((a) => a.name.toLowerCase()));
-      for (const raw of names) {
-        const name = String(raw ?? "").trim();
-        if (!name) continue;
-        if (existing.has(name.toLowerCase())) continue;
-        created.push(await db().addUIArea(input.projectId, name));
-        existing.add(name.toLowerCase());
-      }
-      return { section: input.section, createdCount: created.length, created };
-    }
-
-    const features = (aiResult.object as any).items as { title: string; description: string }[];
-    const created = [];
-    const existing = new Set(board.features.map((f) => f.title.toLowerCase()));
-    for (const f of features) {
-      const title = String(f?.title ?? "").trim();
-      const description = String(f?.description ?? "").trim();
-      if (!title) continue;
-      if (existing.has(title.toLowerCase())) continue;
-      created.push(
-        await db().createFeature({
-          projectId: input.projectId,
-          title,
-          description,
-          journeyStepId: null,
-          uiAreaId: null,
-          phase: "MVP",
-          status: "accepted",
-        }),
-      );
-      existing.add(title.toLowerCase());
-    }
-
-    return { section: input.section, createdCount: created.length, created };
-  },
-  "project:ai:generateCoreSection",
-);
+  const obj = aiResult.object as any;
+  return { commentary: String(obj?.commentary ?? ""), questions: (obj?.questions ?? []) as string[] };
+}, "project:ai:review");
 
 

@@ -16,18 +16,18 @@ export default function HomeRoute() {
   const projects = createAsync(() => listProjects());
   const runCreateProject = useAction(createProject);
 
-  let nameEl!: HTMLInputElement;
-  let ideaEl!: HTMLTextAreaElement;
+  let titleEl!: HTMLInputElement;
+  let descEl!: HTMLTextAreaElement;
 
   const onCreate = async (e: Event) => {
     e.preventDefault();
-    const name = nameEl.value.trim();
-    const ideaRaw = ideaEl.value.trim();
-    if (!name) return;
+    const title = titleEl.value.trim();
+    const description = descEl.value.trim();
+    if (!title) return;
 
-    const project = await runCreateProject({ name, ideaRaw });
-    nameEl.value = "";
-    ideaEl.value = "";
+    const project = await runCreateProject({ title, description });
+    titleEl.value = "";
+    descEl.value = "";
 
     window.location.href = `/projects/${project.id}`;
   };
@@ -37,11 +37,10 @@ export default function HomeRoute() {
       <VStack alignItems="stretch" gap="8">
         <Stack gap="2">
           <Box class={css({ fontSize: "2xl", fontWeight: "semibold" })}>
-            Prod Ideator
+            Project Lists
           </Box>
           <Box class={css({ color: "fg.muted" })}>
-            Create a project, capture the idea, and organize scope on a simple
-            board.
+            Create a project and organize items across lists (drag and drop).
           </Box>
         </Stack>
 
@@ -57,20 +56,17 @@ export default function HomeRoute() {
               <VStack alignItems="stretch" gap="4">
                 <label class={css({ display: "grid", gap: "2" })}>
                   <Box class={css({ fontSize: "sm", color: "fg.muted" })}>
-                    Name
+                    Title
                   </Box>
-                  <Input
-                    ref={nameEl}
-                    placeholder="e.g. Acme Onboarding Assistant"
-                  />
+                  <Input ref={titleEl} placeholder="e.g. Home renovation" />
                 </label>
                 <label class={css({ display: "grid", gap: "2" })}>
                   <Box class={css({ fontSize: "sm", color: "fg.muted" })}>
-                    Idea (raw)
+                    Description
                   </Box>
                   <Textarea
-                    ref={ideaEl}
-                    placeholder="Dump the idea / context here..."
+                    ref={descEl}
+                    placeholder="What is this project for?"
                     class={css({ minH: "120px" })}
                   />
                 </label>
@@ -115,7 +111,7 @@ export default function HomeRoute() {
                       >
                         <Box>
                           <Box class={css({ fontWeight: "semibold" })}>
-                            {p.name}
+                            {p.title}
                           </Box>
                           <Box
                             class={css({ fontSize: "sm", color: "fg.muted" })}

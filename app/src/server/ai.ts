@@ -2,8 +2,6 @@ import { generateObject } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 
-export type CoreSection = "journeySteps" | "uiAreas" | "features";
-
 function getModel() {
   // OpenAI-compatible via Vercel AI SDK's OpenAI provider.
   // Requires: OPENAI_API_KEY
@@ -11,71 +9,42 @@ function getModel() {
   return openai(modelId);
 }
 
-export async function generateCoreSectionSuggestions(input: {
-  section: CoreSection;
-  projectName: string;
-  ideaRaw: string;
-  existingJourneySteps: string[];
-  existingUIAreas: string[];
-  existingFeatureTitles: string[];
-}) {
+function requireApiKey() {
   if (!process.env.OPENAI_API_KEY) {
-    throw new Error("Missing OPENAI_API_KEY. Set it in your environment to enable AI suggestions.");
+    throw new Error(
+      "Missing OPENAI_API_KEY. Set it in your environment to enable AI suggestions."
+    );
   }
+}
 
-  const baseContext = [
-    `Project: ${input.projectName}`,
-    `Idea: ${input.ideaRaw || "(empty)"}`,
-    `Existing journey steps: ${input.existingJourneySteps.join(" | ") || "(none)"}`,
-    `Existing UI areas: ${input.existingUIAreas.join(" | ") || "(none)"}`,
-    `Existing feature titles: ${input.existingFeatureTitles.join(" | ") || "(none)"}`,
-  ].join("\n");
+function normalizeTitle(s: string) {
+  return String(s ?? "").trim();
+}
 
-  if (input.section === "journeySteps") {
-    const schema = z.object({
-      items: z.array(z.string().min(2)).min(3).max(5),
-    });
-
-    return await generateObject({
-      model: getModel(),
-      schema,
-      prompt: [
-        baseContext,
-        "",
-        "Generate 3-5 journey steps (user-facing phases) for this product.",
-        "Return short names only. Avoid duplicates with existing journey steps.",
-      ].join("\n"),
-    });
-  }
-
-  if (input.section === "uiAreas") {
-    const schema = z.object({
-      items: z.array(z.string().min(2)).min(3).max(5),
-    });
-
-    return await generateObject({
-      model: getModel(),
-      schema,
-      prompt: [
-        baseContext,
-        "",
-        "Generate 3-5 UI areas (major surfaces/modules) for this product.",
-        "Return short names only. Avoid duplicates with existing UI areas.",
-      ].join("\n"),
-    });
-  }
+export async function suggestLists(input: {
+  projectTitle: string;
+  projectDescription: string;
+  existingListTitles: string[];
+}) {
+  requireApiKey();
 
   const schema = z.object({
-    items: z
+    lists: z
       .array(
         z.object({
-          title: z.string().min(3),
-          description: z.string().min(3),
-        }),
+          title: z.string().min(2),
+          description: z.string().min(0).max(240),
+        })
       )
       .min(3)
-      .max(5),
+      .max(7),
   });
+
+  const baseContext = [
+    `Project: ${normalizeTitle(input.projectTitle)}`,
+    `Description: ${normalizeTitle(input.projectDescription) || "(empty)"}`,
+    `Existing lists: ${input.existingListTitles.join(" | ") || "(none)"}`,
+  ].join("\n");
 
   return await generateObject({
     model: getModel(),
@@ -83,11 +52,137 @@ export async function generateCoreSectionSuggestions(input: {
     prompt: [
       baseContext,
       "",
-      "Generate 3-5 features for this product as title + short description.",
-      "Keep features specific and actionable. Avoid duplicate titles.",
+      "Suggest 3-7 list columns for organizing items in this project.",
+      "Lists should be simple and reusable. Avoid duplicates with existing lists.",
+      "Return JSON only via the provided schema.",
     ].join("\n"),
   });
 }
 
+export async function suggestItems(input: {
+  projectTitle: string;
+  projectDescription: string;
+  lists: { title: string; description: string }[];
+  existingItemLabels: string[];
+}) {
+  requireApiKey();
 
+  const schema = z.object({
+    items: z
+      .array(
+        z.object({
+          label: z.string().min(2),
+          description: z.string().min(0).max(240),
+          listTitleOrLoose: z.string().min(1),
+        })
+      )
+      .min(5)
+      .max(15),
+  });
 
+  const listTitles = input.lists.map((l) => l.title);
+  const baseContext = [
+    `Project: ${normalizeTitle(input.projectTitle)}`,
+    `Description: ${normalizeTitle(input.projectDescription) || "(empty)"}`,
+    `Lists: ${listTitles.join(" | ") || "(none)"}`,
+    `Existing item labels: ${input.existingItemLabels.join(" | ") || "(none)"}`,
+  ].join("\n");
+
+  return await generateObject({
+    model: getModel(),
+    schema,
+    prompt: [
+      baseContext,
+      "",
+      "Suggest 5-15 items to add to this board.",
+      'For each item, choose listTitleOrLoose as either an existing list title, or exactly the word "Loose".',
+      "Avoid duplicates with existing item labels.",
+      "Return JSON only via the provided schema.",
+    ].join("\n"),
+  });
+}
+
+export async function suggestReorg(input: {
+  projectTitle: string;
+  projectDescription: string;
+  lists: { title: string; description: string }[];
+  items: { label: string; description: string; listTitleOrLoose: string }[];
+}) {
+  requireApiKey();
+
+  const schema = z.object({
+    moves: z
+      .array(
+        z.object({
+          itemLabel: z.string().min(1),
+          targetListTitleOrLoose: z.string().min(1),
+          rationale: z.string().min(0).max(240).optional(),
+        })
+      )
+      .min(1)
+      .max(30),
+  });
+
+  const listTitles = input.lists.map((l) => l.title);
+  const itemLines = input.items
+    .map((it) => `- ${it.label} (${it.listTitleOrLoose})`)
+    .join("\n");
+  const baseContext = [
+    `Project: ${normalizeTitle(input.projectTitle)}`,
+    `Description: ${normalizeTitle(input.projectDescription) || "(empty)"}`,
+    `Lists: ${listTitles.join(" | ") || "(none)"}`,
+    "Items:",
+    itemLines || "(none)",
+  ].join("\n");
+
+  return await generateObject({
+    model: getModel(),
+    schema,
+    prompt: [
+      baseContext,
+      "",
+      "Reorganize the board by proposing moves of existing items into better lists.",
+      'targetListTitleOrLoose must be either an existing list title, or exactly the word "Loose".',
+      "Only move items that clearly belong elsewhere. Leave items unmoved if unsure.",
+      "Return JSON only via the provided schema.",
+    ].join("\n"),
+  });
+}
+
+export async function reviewBoard(input: {
+  projectTitle: string;
+  projectDescription: string;
+  lists: { title: string; description: string }[];
+  items: { label: string; description: string; listTitleOrLoose: string }[];
+}) {
+  requireApiKey();
+
+  const schema = z.object({
+    commentary: z.string().min(10),
+    questions: z.array(z.string().min(5)).min(3).max(10),
+  });
+
+  const listTitles = input.lists.map((l) => l.title);
+  const itemLines = input.items
+    .map((it) => `- ${it.label} (${it.listTitleOrLoose})`)
+    .join("\n");
+  const baseContext = [
+    `Project: ${normalizeTitle(input.projectTitle)}`,
+    `Description: ${normalizeTitle(input.projectDescription) || "(empty)"}`,
+    `Lists: ${listTitles.join(" | ") || "(none)"}`,
+    "Items:",
+    itemLines || "(none)",
+  ].join("\n");
+
+  return await generateObject({
+    model: getModel(),
+    schema,
+    prompt: [
+      baseContext,
+      "",
+      "Provide short commentary on the current organization.",
+      "Then ask 3-10 high-signal questions to improve clarity, completeness, and structure.",
+      "Return JSON only via the provided schema.",
+    ].join("\n"),
+  });
+}

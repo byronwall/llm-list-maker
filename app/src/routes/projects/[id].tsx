@@ -1,726 +1,715 @@
 import { createAsync, revalidate, useAction, useParams } from "@solidjs/router";
-import { For, Show, createEffect, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import { css } from "styled-system/css";
-import { Box, Container, Grid, HStack, Stack, VStack } from "styled-system/jsx";
+import { Box, Container, HStack, Stack, VStack } from "styled-system/jsx";
 
 import { Button } from "~/components/ui/button";
 import * as Card from "~/components/ui/card";
+import * as HoverCard from "~/components/ui/hover-card";
 import { Input } from "~/components/ui/input";
-import { Textarea } from "~/components/ui/textarea";
 import { Link } from "~/components/ui/link";
+import { Textarea } from "~/components/ui/textarea";
 
-import type { Feature, FeatureStatus, Phase, ProjectBoard } from "~/lib/domain";
+import type { Item, List, ProjectBoard } from "~/lib/domain";
 import {
-  addJourneyStep,
-  addUIArea,
-  createFeature,
-  deleteFeature,
-  generateCoreSection,
-  updateFeature,
-  updateJourneyStep,
-  updateUIArea,
+  aiReorganizeBoard,
+  aiReviewBoard,
+  aiSuggestItems,
+  aiSuggestLists,
+  createItem,
+  createList,
+  deleteItem,
+  deleteList,
+  moveItem,
+  reorderLists,
+  updateItem,
+  updateList,
 } from "~/server/actions";
 import { getProjectBoard } from "~/server/queries";
 
-const PHASES: Phase[] = ["MVP", "V1", "Later"];
-const STATUSES: FeatureStatus[] = [
-  "proposed",
-  "accepted",
-  "in_progress",
-  "done",
-  "cut",
-];
+function isLoose(listId: string | null) {
+  return listId == null;
+}
+
+function listKey(listId: string | null) {
+  return listId ?? "LOOSE";
+}
 
 export default function ProjectRoute() {
   const params = useParams();
   const projectId = (): string => params.id!;
 
   const board = createAsync(() => getProjectBoard(projectId()));
-  // Keep the last successful board value mounted while revalidating.
-  // Otherwise `board.latest` can briefly become `undefined`, causing <Show> blocks
-  // to unmount/remount and clearing any in-progress form input.
   const [boardSnapshot, setBoardSnapshot] = createSignal<ProjectBoard>();
 
   createEffect(() => {
-    const latest = board.latest;
-    if (import.meta.env.DEV) {
-      // eslint-disable-next-line no-console
-      console.debug("[project:board] latest", latest ? "ok" : "undefined");
-    }
-    if (latest) setBoardSnapshot(latest);
+    if (board.latest) setBoardSnapshot(board.latest);
   });
 
   const b = () => boardSnapshot();
 
   const refresh = async () => {
-    if (import.meta.env.DEV) {
-      // eslint-disable-next-line no-console
-      console.debug("[project:board] revalidate", projectId());
-    }
     await revalidate(getProjectBoard.keyFor(projectId()));
   };
 
-  const runAddJourneyStep = useAction(addJourneyStep);
-  const runAddUIArea = useAction(addUIArea);
-  const runCreateFeature = useAction(createFeature);
-  const runUpdateFeature = useAction(updateFeature);
-  const runDeleteFeature = useAction(deleteFeature);
-  const runUpdateJourneyStep = useAction(updateJourneyStep);
-  const runUpdateUIArea = useAction(updateUIArea);
-  const runGenerateCoreSection = useAction(generateCoreSection);
+  const runCreateList = useAction(createList);
+  const runUpdateList = useAction(updateList);
+  const runDeleteList = useAction(deleteList);
+  const runReorderLists = useAction(reorderLists);
 
-  let newStepEl!: HTMLInputElement;
-  let newAreaEl!: HTMLInputElement;
+  const runCreateItem = useAction(createItem);
+  const runUpdateItem = useAction(updateItem);
+  const runDeleteItem = useAction(deleteItem);
+  const runMoveItem = useAction(moveItem);
 
-  let featureTitleEl!: HTMLInputElement;
-  let featureDescEl!: HTMLTextAreaElement;
+  const runAiSuggestLists = useAction(aiSuggestLists);
+  const runAiSuggestItems = useAction(aiSuggestItems);
+  const runAiReorg = useAction(aiReorganizeBoard);
+  const runAiReview = useAction(aiReviewBoard);
 
-  const [isGenSteps, setIsGenSteps] = createSignal(false);
-  const [isGenAreas, setIsGenAreas] = createSignal(false);
-  const [isGenFeatures, setIsGenFeatures] = createSignal(false);
+  // New list form
+  let newListTitleEl!: HTMLInputElement;
+  let newListDescEl!: HTMLTextAreaElement;
 
-  const onAddStep = async (e: Event) => {
+  const onCreateList = async (e: Event) => {
     e.preventDefault();
-    const name = newStepEl.value.trim();
-    if (!name) return;
-    await runAddJourneyStep({ projectId: projectId(), name });
-    newStepEl.value = "";
-    await refresh();
-  };
-
-  const onAddArea = async (e: Event) => {
-    e.preventDefault();
-    const name = newAreaEl.value.trim();
-    if (!name) return;
-    await runAddUIArea({ projectId: projectId(), name });
-    newAreaEl.value = "";
-    await refresh();
-  };
-
-  const onCreateFeature = async (e: Event) => {
-    e.preventDefault();
-    const title = featureTitleEl.value.trim();
-    const description = featureDescEl.value.trim();
+    const title = newListTitleEl.value.trim();
+    const description = newListDescEl.value.trim();
     if (!title) return;
+    await runCreateList({ projectId: projectId(), title, description });
+    newListTitleEl.value = "";
+    newListDescEl.value = "";
+    await refresh();
+  };
 
-    await runCreateFeature({
+  // List editing
+  const [editingListId, setEditingListId] = createSignal<string | null>(null);
+  const [editingListTitle, setEditingListTitle] = createSignal("");
+  const [editingListDesc, setEditingListDesc] = createSignal("");
+
+  const startEditList = (list: List) => {
+    setEditingListId(list.id);
+    setEditingListTitle(list.title);
+    setEditingListDesc(list.description ?? "");
+  };
+
+  const cancelEditList = () => {
+    setEditingListId(null);
+    setEditingListTitle("");
+    setEditingListDesc("");
+  };
+
+  const saveEditList = async () => {
+    const listId = editingListId();
+    if (!listId) return;
+    await runUpdateList({
       projectId: projectId(),
-      title,
-      description,
-      journeyStepId: null,
-      uiAreaId: null,
-      phase: "MVP",
-      status: "proposed",
+      listId,
+      patch: { title: editingListTitle().trim(), description: editingListDesc().trim() },
     });
-
-    featureTitleEl.value = "";
-    featureDescEl.value = "";
+    cancelEditList();
     await refresh();
   };
 
-  const onUpdateFeature = async (
-    featureId: string,
-    patch: Partial<Feature>
-  ) => {
-    await runUpdateFeature({ projectId: projectId(), featureId, patch });
+  // New item form (shared across columns)
+  const [addingItemListId, setAddingItemListId] = createSignal<string | null>(null);
+  const [newItemLabel, setNewItemLabel] = createSignal("");
+  const [newItemDesc, setNewItemDesc] = createSignal("");
+
+  const openAddItem = (listId: string | null) => {
+    setAddingItemListId(listId);
+    setNewItemLabel("");
+    setNewItemDesc("");
+  };
+
+  const cancelAddItem = () => {
+    setAddingItemListId(null);
+    setNewItemLabel("");
+    setNewItemDesc("");
+  };
+
+  const createItemFor = async () => {
+    const label = newItemLabel().trim();
+    const description = newItemDesc().trim();
+    if (!label) return;
+    await runCreateItem({ projectId: projectId(), listId: addingItemListId(), label, description });
+    cancelAddItem();
     await refresh();
   };
 
-  const onDelete = async (featureId: string) => {
-    await runDeleteFeature({ projectId: projectId(), featureId });
-    await refresh();
+  // Item editing
+  const [editingItemId, setEditingItemId] = createSignal<string | null>(null);
+  const [editingItemLabel, setEditingItemLabel] = createSignal("");
+  const [editingItemDesc, setEditingItemDesc] = createSignal("");
+
+  const startEditItem = (item: Item) => {
+    setEditingItemId(item.id);
+    setEditingItemLabel(item.label);
+    setEditingItemDesc(item.description ?? "");
   };
 
-  const onGenerateSteps = async () => {
-    try {
-      setIsGenSteps(true);
-      await runGenerateCoreSection({
-        projectId: projectId(),
-        section: "journeySteps",
-      });
-      await refresh();
-    } finally {
-      setIsGenSteps(false);
-    }
+  const cancelEditItem = () => {
+    setEditingItemId(null);
+    setEditingItemLabel("");
+    setEditingItemDesc("");
   };
 
-  const onGenerateAreas = async () => {
-    try {
-      setIsGenAreas(true);
-      await runGenerateCoreSection({
-        projectId: projectId(),
-        section: "uiAreas",
-      });
-      await refresh();
-    } finally {
-      setIsGenAreas(false);
-    }
-  };
-
-  const onGenerateFeatures = async () => {
-    try {
-      setIsGenFeatures(true);
-      await runGenerateCoreSection({
-        projectId: projectId(),
-        section: "features",
-      });
-      await refresh();
-    } finally {
-      setIsGenFeatures(false);
-    }
-  };
-
-  const onRenameJourneyStep = async (journeyStepId: string, name: string) => {
-    const next = name.trim();
-    if (!next) return;
-    await runUpdateJourneyStep({
+  const saveEditItem = async () => {
+    const itemId = editingItemId();
+    if (!itemId) return;
+    await runUpdateItem({
       projectId: projectId(),
-      journeyStepId,
-      name: next,
+      itemId,
+      patch: { label: editingItemLabel().trim(), description: editingItemDesc().trim() },
     });
+    cancelEditItem();
     await refresh();
   };
 
-  const onRenameUIArea = async (uiAreaId: string, name: string) => {
-    const next = name.trim();
-    if (!next) return;
-    await runUpdateUIArea({ projectId: projectId(), uiAreaId, name: next });
+  // Review output
+  const [reviewCommentary, setReviewCommentary] = createSignal<string | null>(null);
+  const [reviewQuestions, setReviewQuestions] = createSignal<string[]>([]);
+
+  const [isAiBusy, setIsAiBusy] = createSignal(false);
+
+  const onAiSuggestLists = async () => {
+    setIsAiBusy(true);
+    try {
+      await runAiSuggestLists({ projectId: projectId() });
+      await refresh();
+    } finally {
+      setIsAiBusy(false);
+    }
+  };
+
+  const onAiSuggestItems = async () => {
+    setIsAiBusy(true);
+    try {
+      await runAiSuggestItems({ projectId: projectId() });
+      await refresh();
+    } finally {
+      setIsAiBusy(false);
+    }
+  };
+
+  const onAiReorg = async () => {
+    setIsAiBusy(true);
+    try {
+      await runAiReorg({ projectId: projectId() });
+      await refresh();
+    } finally {
+      setIsAiBusy(false);
+    }
+  };
+
+  const onAiReview = async () => {
+    setIsAiBusy(true);
+    try {
+      const result = await runAiReview({ projectId: projectId() });
+      setReviewCommentary(result.commentary || null);
+      setReviewQuestions(result.questions || []);
+    } finally {
+      setIsAiBusy(false);
+    }
+  };
+
+  const lists = () => b()?.lists ?? [];
+  const items = () => b()?.items ?? [];
+
+  const itemsByListId = createMemo(() => {
+    const map = new Map<string, Item[]>();
+    for (const it of items()) {
+      const key = listKey(it.listId);
+      const arr = map.get(key) ?? [];
+      arr.push(it);
+      map.set(key, arr);
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => a.order - b.order);
+    }
+    return map;
+  });
+
+  const orderedColumns = createMemo(() => {
+    const cols: { key: string; listId: string | null; title: string; description: string }[] = [
+      { key: "LOOSE", listId: null, title: "Loose", description: "Unassigned items live here." },
+      ...lists().map((l) => ({ key: l.id, listId: l.id, title: l.title, description: l.description })),
+    ];
+    return cols;
+  });
+
+  // Drag/drop state (HTML5 DnD)
+  const [draggingItemId, setDraggingItemId] = createSignal<string | null>(null);
+  const [dragOverItemId, setDragOverItemId] = createSignal<string | null>(null);
+  const [dragOverColumnId, setDragOverColumnId] = createSignal<string | null>(null);
+
+  const [draggingListId, setDraggingListId] = createSignal<string | null>(null);
+  const [dragOverListId, setDragOverListId] = createSignal<string | null>(null);
+
+  const moveItemByDnD = async (itemId: string, toListId: string | null, toIndex: number) => {
+    await runMoveItem({ projectId: projectId(), itemId, toListId, toIndex });
     await refresh();
+  };
+
+  const onListDropBefore = async (targetListId: string) => {
+    const dragged = draggingListId();
+    if (!dragged) return;
+    if (dragged === targetListId) return;
+    const ids = lists()
+      .map((l) => l.id)
+      .filter((id) => id !== dragged);
+    const targetIdx = ids.indexOf(targetListId);
+    if (targetIdx < 0) return;
+    ids.splice(targetIdx, 0, dragged);
+    await runReorderLists({ projectId: projectId(), listIdsInOrder: ids });
+    await refresh();
+  };
+
+  const moveItemTo = async (itemId: string, toListId: string | null) => {
+    const destItems = itemsByListId().get(listKey(toListId)) ?? [];
+    await runMoveItem({ projectId: projectId(), itemId, toListId, toIndex: destItems.length });
+    await refresh();
+  };
+
+  const moveItemWithinColumn = async (item: Item, delta: -1 | 1) => {
+    const colKey = listKey(item.listId);
+    const colItems = (itemsByListId().get(colKey) ?? []).slice().sort((a, b) => a.order - b.order);
+    const idx = colItems.findIndex((i) => i.id === item.id);
+    if (idx < 0) return;
+    const next = idx + delta;
+    if (next < 0 || next >= colItems.length) return;
+    await moveItemByDnD(item.id, item.listId, next);
   };
 
   return (
-    <Container py="8" maxW="7xl">
+    <Container py="10" maxW="6xl">
       <VStack alignItems="stretch" gap="6">
-        <HStack justify="space-between" alignItems="flex-start">
+        <HStack justify="space-between" align="start">
           <Stack gap="1">
-            <Box class={css({ fontSize: "xl", fontWeight: "semibold" })}>
-              <Show when={b()} fallback="Loading…">
-                {b()!.project.name}
-              </Show>
-            </Box>
             <HStack gap="3">
               <Link href="/">← Projects</Link>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void refresh()}
-              >
-                Refresh
-              </Button>
             </HStack>
+            <Show when={b()}>
+              <Box class={css({ fontSize: "2xl", fontWeight: "semibold" })}>
+                {b()!.project.title}
+              </Box>
+              <Show when={b()!.project.description}>
+                <Box class={css({ color: "fg.muted" })}>
+                  {b()!.project.description}
+                </Box>
+              </Show>
+            </Show>
           </Stack>
+
+          <HStack gap="2" flexWrap="wrap" justify="flex-end">
+            <Button onClick={onAiSuggestLists} disabled={isAiBusy()} variant="outline">
+              Suggest lists
+            </Button>
+            <Button onClick={onAiSuggestItems} disabled={isAiBusy()} variant="outline">
+              Suggest items
+            </Button>
+            <Button onClick={onAiReorg} disabled={isAiBusy()} variant="outline">
+              Reorganize board
+            </Button>
+            <Button onClick={onAiReview} disabled={isAiBusy()} variant="solid">
+              Review board
+            </Button>
+          </HStack>
         </HStack>
 
-        <Show when={b()}>
-          {(b) => (
-            <>
-              <Card.Root>
-                <Card.Header>
-                  <Card.Title>Idea</Card.Title>
-                  <Card.Description>
-                    Raw input saved with the project.
-                  </Card.Description>
-                </Card.Header>
-                <Card.Body>
-                  <Box
-                    class={css({
-                      whiteSpace: "pre-wrap",
-                      color: b().project.ideaRaw ? "fg.default" : "fg.muted",
-                    })}
-                  >
-                    {b().project.ideaRaw || "No idea text yet."}
-                  </Box>
-                </Card.Body>
-              </Card.Root>
+        <Card.Root>
+          <Card.Header>
+            <Card.Title>Add a list</Card.Title>
+            <Card.Description>Lists are columns on the board.</Card.Description>
+          </Card.Header>
+          <Card.Body>
+            <form onSubmit={onCreateList}>
+              <VStack alignItems="stretch" gap="3">
+                <Input ref={newListTitleEl} placeholder="List title (e.g. Doing)" />
+                <Textarea ref={newListDescEl} placeholder="Description (shown on hover)" class={css({ minH: "80px" })} />
+                <HStack justify="flex-end">
+                  <Button type="submit" variant="solid">
+                    Add list
+                  </Button>
+                </HStack>
+              </VStack>
+            </form>
+          </Card.Body>
+        </Card.Root>
 
-              <Grid columns={{ base: 1, md: 2 }} gap="4">
-                <Card.Root>
-                  <Card.Header>
-                    <HStack justify="space-between" alignItems="center">
-                      <Card.Title>Add journey step</Card.Title>
-                      <Button
-                        variant="outline"
-                        size="xs"
-                        onClick={onGenerateSteps}
-                        disabled={isGenSteps()}
-                      >
-                        {isGenSteps() ? "Generating…" : "Wand"}
-                      </Button>
-                    </HStack>
-                    <Card.Description>Rows on the board.</Card.Description>
-                  </Card.Header>
-                  <Card.Body>
-                    <Show when={b().journeySteps.length > 0}>
-                      <VStack
-                        alignItems="stretch"
-                        gap="2"
-                        class={css({ pb: "3" })}
-                      >
-                        <For each={b().journeySteps}>
-                          {(s) => (
-                            <HStack>
-                              <EditableTextInput
-                                value={s.name}
-                                onCommit={(next) =>
-                                  void onRenameJourneyStep(s.id, next)
-                                }
-                              />
+        <Show when={reviewCommentary() || reviewQuestions().length > 0}>
+          <Card.Root>
+            <Card.Header>
+              <Card.Title>AI review</Card.Title>
+              <Card.Description>Commentary + questions about your current board.</Card.Description>
+            </Card.Header>
+            <Card.Body>
+              <VStack alignItems="stretch" gap="3">
+                <Show when={reviewCommentary()}>
+                  <Box class={css({ whiteSpace: "pre-wrap" })}>{reviewCommentary()!}</Box>
+                </Show>
+                <Show when={reviewQuestions().length > 0}>
+                  <VStack alignItems="stretch" gap="2">
+                    <For each={reviewQuestions()}>
+                      {(q) => <Box class={css({ color: "fg.muted" })}>- {q}</Box>}
+                    </For>
+                  </VStack>
+                </Show>
+              </VStack>
+            </Card.Body>
+          </Card.Root>
+        </Show>
+
+        <Show when={b()} fallback={<Box class={css({ color: "fg.muted" })}>Loading…</Box>}>
+          <Box class={css({ overflowX: "auto" })}>
+            <HStack align="start" gap="4" class={css({ minW: "max-content", pb: "2" })}>
+              <For each={orderedColumns()}>
+                {(col) => {
+                  const columnItems = () => itemsByListId().get(col.key) ?? [];
+                  const listForColumn = () => lists().find((l) => l.id === col.listId) ?? null;
+
+                  return (
+                    <Card.Root class={css({ width: "360px" })}>
+                      <Card.Header>
+                        <HStack justify="space-between" align="start" gap="2">
+                          <HoverCard.Root>
+                            <HoverCard.Trigger>
+                              <Box
+                                class={css({
+                                  fontWeight: "semibold",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "2",
+                                  userSelect: "none",
+                                })}
+                              >
+                                <Show when={!isLoose(col.listId)}>
+                                  <Box
+                                    as="span"
+                                    draggable
+                                    onDragStart={(e) => {
+                                      e.dataTransfer?.setData("text/plain", String(col.listId));
+                                      setDraggingListId(col.listId);
+                                    }}
+                                    onDragEnd={() => {
+                                      setDraggingListId(null);
+                                      setDragOverListId(null);
+                                    }}
+                                    onDragOver={(e) => {
+                                      if (!draggingListId()) return;
+                                      e.preventDefault();
+                                      setDragOverListId(col.listId);
+                                    }}
+                                    onDrop={async (e) => {
+                                      e.preventDefault();
+                                      setDragOverListId(null);
+                                      await onListDropBefore(String(col.listId));
+                                    }}
+                                    class={css({
+                                      cursor: "grab",
+                                      borderWidth: "1px",
+                                      borderColor: dragOverListId() === col.listId ? "border.emphasized" : "transparent",
+                                      rounded: "sm",
+                                      px: "1",
+                                      color: "fg.muted",
+                                      fontSize: "sm",
+                                    })}
+                                    aria-label="Drag to reorder list"
+                                    title="Drag to reorder list"
+                                  >
+                                    ⋮⋮
+                                  </Box>
+                                </Show>
+                                <Box as="span">{col.title}</Box>
+                              </Box>
+                            </HoverCard.Trigger>
+                            <HoverCard.Positioner>
+                              <HoverCard.Content>
+                                <Box class={css({ fontSize: "sm", whiteSpace: "pre-wrap" })}>
+                                  {col.description || "(no description)"}
+                                </Box>
+                              </HoverCard.Content>
+                            </HoverCard.Positioner>
+                          </HoverCard.Root>
+
+                          <Show when={!isLoose(col.listId)}>
+                            <HStack gap="1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  const list = listForColumn();
+                                  if (list) startEditList(list);
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={async () => {
+                                  if (!col.listId) return;
+                                  await runDeleteList({ projectId: projectId(), listId: col.listId });
+                                  await refresh();
+                                }}
+                              >
+                                Delete
+                              </Button>
                             </HStack>
-                          )}
-                        </For>
-                      </VStack>
-                    </Show>
-                    <form onSubmit={onAddStep}>
-                      <HStack>
-                        <Input ref={newStepEl} placeholder="e.g. Checkout" />
-                        <Button type="submit">Add</Button>
-                      </HStack>
-                    </form>
-                  </Card.Body>
-                </Card.Root>
+                          </Show>
+                        </HStack>
 
-                <Card.Root>
-                  <Card.Header>
-                    <HStack justify="space-between" alignItems="center">
-                      <Card.Title>Add UI area</Card.Title>
-                      <Button
-                        variant="outline"
-                        size="xs"
-                        onClick={onGenerateAreas}
-                        disabled={isGenAreas()}
-                      >
-                        {isGenAreas() ? "Generating…" : "Wand"}
-                      </Button>
-                    </HStack>
-                    <Card.Description>Columns on the board.</Card.Description>
-                  </Card.Header>
-                  <Card.Body>
-                    <Show when={b().uiAreas.length > 0}>
-                      <VStack
-                        alignItems="stretch"
-                        gap="2"
-                        class={css({ pb: "3" })}
-                      >
-                        <For each={b().uiAreas}>
-                          {(a) => (
-                            <HStack>
-                              <EditableTextInput
-                                value={a.name}
-                                onCommit={(next) =>
-                                  void onRenameUIArea(a.id, next)
-                                }
-                              />
+                        <Show when={editingListId() === col.listId}>
+                          <VStack alignItems="stretch" gap="2" mt="3">
+                            <Input value={editingListTitle()} onInput={(e) => setEditingListTitle(e.currentTarget.value)} />
+                            <Textarea
+                              value={editingListDesc()}
+                              onInput={(e) => setEditingListDesc(e.currentTarget.value)}
+                              class={css({ minH: "72px" })}
+                            />
+                            <HStack justify="flex-end" gap="2">
+                              <Button size="sm" variant="outline" onClick={cancelEditList}>
+                                Cancel
+                              </Button>
+                              <Button size="sm" variant="solid" onClick={saveEditList}>
+                                Save
+                              </Button>
                             </HStack>
-                          )}
-                        </For>
-                      </VStack>
-                    </Show>
-                    <form onSubmit={onAddArea}>
-                      <HStack>
-                        <Input ref={newAreaEl} placeholder="e.g. Billing" />
-                        <Button type="submit">Add</Button>
-                      </HStack>
-                    </form>
-                  </Card.Body>
-                </Card.Root>
-              </Grid>
+                          </VStack>
+                        </Show>
+                      </Card.Header>
 
-              <Card.Root>
-                <Card.Header>
-                  <HStack justify="space-between" alignItems="center">
-                    <Card.Title>Create feature</Card.Title>
-                    <Button
-                      variant="outline"
-                      size="xs"
-                      onClick={onGenerateFeatures}
-                      disabled={isGenFeatures()}
-                    >
-                      {isGenFeatures() ? "Generating…" : "Wand"}
-                    </Button>
-                  </HStack>
-                  <Card.Description>
-                    A basic card you can later move around.
-                  </Card.Description>
-                </Card.Header>
-                <Card.Body>
-                  <form onSubmit={onCreateFeature}>
-                    <VStack alignItems="stretch" gap="3">
-                      <Input ref={featureTitleEl} placeholder="Feature title" />
-                      <Textarea
-                        ref={featureDescEl}
-                        placeholder="Short description"
-                        class={css({ minH: "90px" })}
-                      />
-                      <HStack justify="flex-end">
-                        <Button type="submit">Create feature</Button>
-                      </HStack>
-                    </VStack>
-                  </form>
-                </Card.Body>
-              </Card.Root>
+                      <Card.Body>
+                        <VStack alignItems="stretch" gap="2">
+                          <Show
+                            when={columnItems().length > 0}
+                            fallback={<Box class={css({ color: "fg.muted", fontSize: "sm" })}>No items.</Box>}
+                          >
+                            <For each={columnItems()}>
+                              {(it) => (
+                                <Box
+                                  class={css({
+                                    borderWidth: "1px",
+                                    borderColor: "border",
+                                    rounded: "md",
+                                    px: "3",
+                                    py: "2",
+                                    outlineWidth: dragOverItemId() === it.id ? "2px" : "0px",
+                                    outlineColor: "border.emphasized",
+                                  })}
+                                  onDragOver={(e) => {
+                                    if (!draggingItemId()) return;
+                                    e.preventDefault();
+                                    setDragOverItemId(it.id);
+                                    setDragOverColumnId(null);
+                                  }}
+                                  onDrop={async (e) => {
+                                    e.preventDefault();
+                                    const dragged = draggingItemId();
+                                    if (!dragged) return;
 
-              <Card.Root>
-                <Card.Header>
-                  <Card.Title>Scope Board</Card.Title>
-                  <Card.Description>
-                    Columns = UI Areas. Rows = Journey Steps. (MVP: use
-                    dropdowns to move features.)
-                  </Card.Description>
-                </Card.Header>
-                <Card.Body>
-                  <Show
-                    when={b().features.length > 0}
-                    fallback={
-                      <Box class={css({ color: "fg.muted" })}>
-                        No features yet — create one above (or click “Wand”).
-                      </Box>
-                    }
-                  >
-                    <ScopeBoard
-                      journeySteps={b().journeySteps}
-                      uiAreas={b().uiAreas}
-                      features={b().features}
-                      onUpdate={onUpdateFeature}
-                      onDelete={onDelete}
-                    />
-                  </Show>
-                </Card.Body>
-              </Card.Root>
-            </>
-          )}
+                                    const destListId = col.listId;
+                                    const destItems = columnItems().filter((x) => x.id !== dragged);
+                                    const targetIdx = destItems.findIndex((x) => x.id === it.id);
+                                    if (targetIdx < 0) return;
+
+                                    setDragOverItemId(null);
+                                    await moveItemByDnD(dragged, destListId, targetIdx);
+                                  }}
+                                >
+                                  <HStack justify="space-between" align="start" gap="2">
+                                    <HoverCard.Root>
+                                      <HoverCard.Trigger>
+                                        <HStack gap="2" align="center">
+                                          <Box
+                                            as="span"
+                                            draggable
+                                            onDragStart={(e) => {
+                                              e.dataTransfer?.setData("text/plain", it.id);
+                                              setDraggingItemId(it.id);
+                                            }}
+                                            onDragEnd={() => {
+                                              setDraggingItemId(null);
+                                              setDragOverItemId(null);
+                                              setDragOverColumnId(null);
+                                            }}
+                                            class={css({
+                                              cursor: "grab",
+                                              borderWidth: "1px",
+                                              borderColor: "border",
+                                              rounded: "sm",
+                                              px: "1",
+                                              color: "fg.muted",
+                                              fontSize: "sm",
+                                              userSelect: "none",
+                                            })}
+                                            aria-label="Drag to move item"
+                                            title="Drag to move item"
+                                          >
+                                            ⋮⋮
+                                          </Box>
+                                          <Box class={css({ fontWeight: "medium" })}>{it.label}</Box>
+                                        </HStack>
+                                      </HoverCard.Trigger>
+                                      <HoverCard.Positioner>
+                                        <HoverCard.Content>
+                                          <Box class={css({ fontSize: "sm", whiteSpace: "pre-wrap" })}>
+                                            {it.description || "(no description)"}
+                                          </Box>
+                                        </HoverCard.Content>
+                                      </HoverCard.Positioner>
+                                    </HoverCard.Root>
+
+                                    <HStack gap="1">
+                                      <Button size="sm" variant="ghost" onClick={() => startEditItem(it)}>
+                                        Edit
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={async () => {
+                                          await runDeleteItem({ projectId: projectId(), itemId: it.id });
+                                          await refresh();
+                                        }}
+                                      >
+                                        Delete
+                                      </Button>
+                                    </HStack>
+                                  </HStack>
+
+                                  <Show when={editingItemId() === it.id}>
+                                    <VStack alignItems="stretch" gap="2" mt="3">
+                                      <Input value={editingItemLabel()} onInput={(e) => setEditingItemLabel(e.currentTarget.value)} />
+                                      <Textarea
+                                        value={editingItemDesc()}
+                                        onInput={(e) => setEditingItemDesc(e.currentTarget.value)}
+                                        class={css({ minH: "72px" })}
+                                      />
+                                      <HStack justify="flex-end" gap="2">
+                                        <Button size="sm" variant="outline" onClick={cancelEditItem}>
+                                          Cancel
+                                        </Button>
+                                        <Button size="sm" variant="solid" onClick={saveEditItem}>
+                                          Save
+                                        </Button>
+                                      </HStack>
+                                    </VStack>
+                                  </Show>
+
+                                  <HStack gap="2" mt="2" flexWrap="wrap">
+                                    <Button
+                                      size="xs"
+                                      variant="outline"
+                                      onClick={() => moveItemWithinColumn(it, -1)}
+                                    >
+                                      Up
+                                    </Button>
+                                    <Button
+                                      size="xs"
+                                      variant="outline"
+                                      onClick={() => moveItemWithinColumn(it, 1)}
+                                    >
+                                      Down
+                                    </Button>
+                                    <Button
+                                      size="xs"
+                                      variant="outline"
+                                      disabled={isLoose(col.listId)}
+                                      onClick={() => moveItemTo(it.id, null)}
+                                    >
+                                      To Loose
+                                    </Button>
+                                    <For each={lists()}>
+                                      {(l) => (
+                                        <Button
+                                          size="xs"
+                                          variant="outline"
+                                          disabled={col.listId === l.id}
+                                          onClick={() => moveItemTo(it.id, l.id)}
+                                        >
+                                          To {l.title}
+                                        </Button>
+                                      )}
+                                    </For>
+                                  </HStack>
+                                </Box>
+                              )}
+                            </For>
+                          </Show>
+
+                          <Box
+                            class={css({
+                              borderWidth: "1px",
+                              borderStyle: "dashed",
+                              borderColor: dragOverColumnId() === col.key ? "border.emphasized" : "border",
+                              rounded: "md",
+                              p: "2",
+                              color: "fg.muted",
+                              fontSize: "sm",
+                            })}
+                            onDragOver={(e) => {
+                              if (!draggingItemId()) return;
+                              e.preventDefault();
+                              setDragOverColumnId(col.key);
+                              setDragOverItemId(null);
+                            }}
+                            onDrop={async (e) => {
+                              e.preventDefault();
+                              const dragged = draggingItemId();
+                              if (!dragged) return;
+                              const destListId = col.listId;
+                              const destItems = columnItems().filter((x) => x.id !== dragged);
+                              setDragOverColumnId(null);
+                              await moveItemByDnD(dragged, destListId, destItems.length);
+                            }}
+                          >
+                            Drop here to add to end
+                          </Box>
+
+                          <Box pt="2">
+                            <Show
+                              when={addingItemListId() === col.listId}
+                              fallback={
+                                <Button size="sm" variant="outline" onClick={() => openAddItem(col.listId)}>
+                                  Add item
+                                </Button>
+                              }
+                            >
+                              <VStack alignItems="stretch" gap="2">
+                                <Input
+                                  placeholder="Item label"
+                                  value={newItemLabel()}
+                                  onInput={(e) => setNewItemLabel(e.currentTarget.value)}
+                                />
+                                <Textarea
+                                  placeholder="Description (shown on hover)"
+                                  value={newItemDesc()}
+                                  onInput={(e) => setNewItemDesc(e.currentTarget.value)}
+                                  class={css({ minH: "72px" })}
+                                />
+                                <HStack justify="flex-end" gap="2">
+                                  <Button size="sm" variant="outline" onClick={cancelAddItem}>
+                                    Cancel
+                                  </Button>
+                                  <Button size="sm" variant="solid" onClick={createItemFor}>
+                                    Add
+                                  </Button>
+                                </HStack>
+                              </VStack>
+                            </Show>
+                          </Box>
+                        </VStack>
+                      </Card.Body>
+                    </Card.Root>
+                  );
+                }}
+              </For>
+            </HStack>
+          </Box>
         </Show>
       </VStack>
     </Container>
   );
 }
 
-function ScopeBoard(props: {
-  journeySteps: { id: string; name: string }[];
-  uiAreas: { id: string; name: string }[];
-  features: Feature[];
-  onUpdate: (featureId: string, patch: Partial<Feature>) => Promise<void>;
-  onDelete: (featureId: string) => Promise<void>;
-}) {
-  const allRows = () => [
-    { id: "unassigned", name: "Unassigned" },
-    ...props.journeySteps,
-  ];
-  const allCols = () => [
-    { id: "unassigned", name: "Unassigned" },
-    ...props.uiAreas,
-  ];
 
-  // Hide rows/cols that contain no features to avoid rendering a bunch of empty
-  // grid cells under the last real feature card.
-  const usedRowIds = () => {
-    const set = new Set<string>();
-    for (const f of props.features) set.add(f.journeyStepId ?? "unassigned");
-    return set;
-  };
-  const usedColIds = () => {
-    const set = new Set<string>();
-    for (const f of props.features) set.add(f.uiAreaId ?? "unassigned");
-    return set;
-  };
-  const visibleRows = () =>
-    allRows().filter((r) => r.id === "unassigned" || usedRowIds().has(r.id));
-  const visibleCols = () =>
-    allCols().filter((c) => c.id === "unassigned" || usedColIds().has(c.id));
-
-  const featuresForCell = (rowId: string, colId: string) => {
-    const journeyStepId = rowId === "unassigned" ? null : rowId;
-    const uiAreaId = colId === "unassigned" ? null : colId;
-    return props.features.filter(
-      (f) => f.journeyStepId === journeyStepId && f.uiAreaId === uiAreaId
-    );
-  };
-
-  return (
-    <Box class={css({ overflowX: "auto" })}>
-      <Box
-        class={css({
-          minW: "900px",
-          display: "grid",
-          gridTemplateColumns: `220px repeat(${visibleCols().length}, minmax(240px, 1fr))`,
-          gap: "2",
-          alignItems: "stretch",
-        })}
-      >
-        <Box />
-        <For each={visibleCols()}>
-          {(col) => (
-            <Box
-              class={css({
-                borderWidth: "1px",
-                borderColor: "border",
-                rounded: "md",
-                px: "3",
-                py: "2",
-                fontWeight: "semibold",
-                bg: "bg.subtle",
-              })}
-            >
-              {col.name}
-            </Box>
-          )}
-        </For>
-
-        <For each={visibleRows()}>
-          {(row) => (
-            <>
-              <Box
-                class={css({
-                  borderWidth: "1px",
-                  borderColor: "border",
-                  rounded: "md",
-                  px: "3",
-                  py: "2",
-                  fontWeight: "semibold",
-                  bg: "bg.subtle",
-                })}
-              >
-                {row.name}
-              </Box>
-              <For each={visibleCols()}>
-                {(col) => (
-                  <Box
-                    class={css({
-                      borderWidth: "1px",
-                      borderColor: "border",
-                      rounded: "md",
-                      p: "2",
-                      minH: "120px",
-                      bg: "bg.default",
-                    })}
-                  >
-                    <VStack alignItems="stretch" gap="2">
-                      <For each={featuresForCell(row.id, col.id)}>
-                        {(f) => (
-                          <FeatureCard
-                            feature={f}
-                            rows={props.journeySteps}
-                            cols={props.uiAreas}
-                            onUpdate={props.onUpdate}
-                            onDelete={props.onDelete}
-                          />
-                        )}
-                      </For>
-                    </VStack>
-                  </Box>
-                )}
-              </For>
-            </>
-          )}
-        </For>
-      </Box>
-    </Box>
-  );
-}
-
-function FeatureCard(props: {
-  feature: Feature;
-  rows: { id: string; name: string }[];
-  cols: { id: string; name: string }[];
-  onUpdate: (featureId: string, patch: Partial<Feature>) => Promise<void>;
-  onDelete: (featureId: string) => Promise<void>;
-}) {
-  const f = () => props.feature;
-
-  return (
-    <Box
-      class={css({
-        borderWidth: "1px",
-        borderColor: "border",
-        rounded: "md",
-        p: "3",
-        display: "grid",
-        gap: "2",
-      })}
-    >
-      <EditableTextInput
-        value={f().title}
-        onCommit={(next) => void props.onUpdate(f().id, { title: next })}
-      />
-      <EditableTextarea
-        value={f().description}
-        class={css({ minH: "70px" })}
-        onCommit={(next) => void props.onUpdate(f().id, { description: next })}
-      />
-
-      <Grid columns={2} gap="2" class={css({ pt: "1" })}>
-        <label class={css({ display: "grid", gap: "1" })}>
-          <Box class={css({ fontSize: "xs", color: "fg.muted" })}>Journey</Box>
-          <select
-            class={css({
-              borderWidth: "1px",
-              borderColor: "border",
-              rounded: "sm",
-              px: "2",
-              py: "1",
-              bg: "bg.default",
-              fontSize: "sm",
-            })}
-            value={f().journeyStepId ?? ""}
-            onChange={(e) =>
-              props.onUpdate(f().id, {
-                journeyStepId: e.currentTarget.value || null,
-              })
-            }
-          >
-            <option value="">Unassigned</option>
-            <For each={props.rows}>
-              {(r) => <option value={r.id}>{r.name}</option>}
-            </For>
-          </select>
-        </label>
-
-        <label class={css({ display: "grid", gap: "1" })}>
-          <Box class={css({ fontSize: "xs", color: "fg.muted" })}>UI Area</Box>
-          <select
-            class={css({
-              borderWidth: "1px",
-              borderColor: "border",
-              rounded: "sm",
-              px: "2",
-              py: "1",
-              bg: "bg.default",
-              fontSize: "sm",
-            })}
-            value={f().uiAreaId ?? ""}
-            onChange={(e) =>
-              props.onUpdate(f().id, {
-                uiAreaId: e.currentTarget.value || null,
-              })
-            }
-          >
-            <option value="">Unassigned</option>
-            <For each={props.cols}>
-              {(c) => <option value={c.id}>{c.name}</option>}
-            </For>
-          </select>
-        </label>
-
-        <label class={css({ display: "grid", gap: "1" })}>
-          <Box class={css({ fontSize: "xs", color: "fg.muted" })}>Phase</Box>
-          <select
-            class={css({
-              borderWidth: "1px",
-              borderColor: "border",
-              rounded: "sm",
-              px: "2",
-              py: "1",
-              bg: "bg.default",
-              fontSize: "sm",
-            })}
-            value={f().phase}
-            onChange={(e) =>
-              props.onUpdate(f().id, { phase: e.currentTarget.value as Phase })
-            }
-          >
-            <For each={PHASES}>{(p) => <option value={p}>{p}</option>}</For>
-          </select>
-        </label>
-
-        <label class={css({ display: "grid", gap: "1" })}>
-          <Box class={css({ fontSize: "xs", color: "fg.muted" })}>Status</Box>
-          <select
-            class={css({
-              borderWidth: "1px",
-              borderColor: "border",
-              rounded: "sm",
-              px: "2",
-              py: "1",
-              bg: "bg.default",
-              fontSize: "sm",
-            })}
-            value={f().status}
-            onChange={(e) =>
-              props.onUpdate(f().id, {
-                status: e.currentTarget.value as FeatureStatus,
-              })
-            }
-          >
-            <For each={STATUSES}>
-              {(s) => <option value={s}>{s.replaceAll("_", " ")}</option>}
-            </For>
-          </select>
-        </label>
-      </Grid>
-
-      <HStack justify="space-between" class={css({ pt: "2" })}>
-        <Box class={css({ fontSize: "xs", color: "fg.muted" })}>
-          Updated {new Date(f().updatedAt).toLocaleString()}
-        </Box>
-        <Button
-          variant="outline"
-          size="xs"
-          onClick={() => props.onDelete(f().id)}
-        >
-          Delete
-        </Button>
-      </HStack>
-    </Box>
-  );
-}
-
-function EditableTextInput(props: {
-  value: string;
-  onCommit: (next: string) => void;
-}) {
-  const [val, setVal] = createSignal(props.value);
-  const [dirty, setDirty] = createSignal(false);
-
-  createEffect(() => {
-    if (!dirty()) setVal(props.value);
-  });
-
-  return (
-    <Input
-      value={val()}
-      onInput={(e) => {
-        setDirty(true);
-        setVal(e.currentTarget.value);
-      }}
-      onBlur={() => {
-        const next = val().trim();
-        setDirty(false);
-        if (!next) {
-          setVal(props.value);
-          return;
-        }
-        if (next === props.value) return;
-        props.onCommit(next);
-      }}
-    />
-  );
-}
-
-function EditableTextarea(props: {
-  value: string;
-  class?: string;
-  onCommit: (next: string) => void;
-}) {
-  const [val, setVal] = createSignal(props.value);
-  const [dirty, setDirty] = createSignal(false);
-
-  createEffect(() => {
-    if (!dirty()) setVal(props.value);
-  });
-
-  return (
-    <Textarea
-      value={val()}
-      class={props.class}
-      onInput={(e) => {
-        setDirty(true);
-        setVal(e.currentTarget.value);
-      }}
-      onBlur={() => {
-        const next = val();
-        setDirty(false);
-        if (next === props.value) return;
-        props.onCommit(next);
-      }}
-    />
-  );
-}
