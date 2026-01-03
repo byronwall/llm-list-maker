@@ -17,7 +17,7 @@ function requireApiKey() {
   }
 }
 
-function normalizeTitle(s: string) {
+function normalizeTitle(s: unknown) {
   return String(s ?? "").trim();
 }
 
@@ -38,7 +38,7 @@ export async function suggestLists(input: {
         })
       )
       .min(3)
-      .max(7),
+      .max(20),
   });
 
   const baseContext = [
@@ -67,7 +67,8 @@ export async function suggestLists(input: {
           ].join("\n")
         : "No user instructions were provided. Use the project context only.",
       "",
-      "Suggest 3-7 list columns for organizing items in this project.",
+      "Suggest 3-20 list columns for organizing items in this project.",
+      "Default to 3-7 unless the user explicitly asks for more (e.g. a list per year).",
       "Lists should be simple and reusable. Avoid duplicates with existing lists.",
       "Return JSON only via the provided schema.",
     ].join("\n"),
@@ -93,7 +94,7 @@ export async function suggestItems(input: {
         })
       )
       .min(5)
-      .max(15),
+      .max(30),
   });
 
   const listTitles = input.lists.map((l) => l.title);
@@ -125,8 +126,70 @@ export async function suggestItems(input: {
           ].join("\n")
         : "No user instructions were provided. Use the project context only.",
       "",
-      "Suggest 5-15 items to add to this board.",
+      "Suggest 5-30 items to add to this board.",
+      "If the user requests a specific count, aim to satisfy it (within limits).",
       'For each item, choose listTitleOrLoose as either an existing list title, or exactly the word "Loose".',
+      "Avoid duplicates with existing item labels.",
+      "Return JSON only via the provided schema.",
+    ].join("\n"),
+  });
+}
+
+export async function suggestItemsForList(input: {
+  projectTitle: string;
+  projectDescription: string;
+  listTitle: string;
+  listDescription?: string;
+  existingItemLabels: string[];
+  userInput?: string;
+  maxItems: number;
+}) {
+  requireApiKey();
+
+  const maxItems = Math.max(1, Math.min(20, Math.floor(input.maxItems)));
+
+  const schema = z.object({
+    items: z
+      .array(
+        z.object({
+          label: z.string().min(2),
+          description: z.string().min(0).max(240),
+        })
+      )
+      .min(1)
+      .max(maxItems),
+  });
+
+  const baseContext = [
+    `Project: ${normalizeTitle(input.projectTitle)}`,
+    `Description: ${normalizeTitle(input.projectDescription) || "(empty)"}`,
+    `Target list: ${normalizeTitle(input.listTitle)}`,
+    `Target list description: ${normalizeTitle(input.listDescription) || "(empty)"}`,
+    `Existing item labels: ${input.existingItemLabels.join(" | ") || "(none)"}`,
+  ].join("\n");
+
+  const user = normalizeTitle(input.userInput);
+
+  return await generateObject({
+    model: getModel(),
+    schema,
+    prompt: [
+      baseContext,
+      "",
+      user
+        ? [
+            "User instructions (highest priority):",
+            '"""',
+            user,
+            '"""',
+            "",
+            "Heavily prioritize the user instructions above.",
+          ].join("\n")
+        : "No user instructions were provided. Use the project context only.",
+      "",
+      `Generate up to ${maxItems} items to add to the Target list (and ONLY that list).`,
+      "Prefer returning the full count unless the user instructions make that impossible.",
+      "Each label must be unique, concrete, and specific (do not output placeholders like 'Item 1').",
       "Avoid duplicates with existing item labels.",
       "Return JSON only via the provided schema.",
     ].join("\n"),
