@@ -107,6 +107,11 @@ Styling rules of thumb:
 - Prefer `styled-system/jsx` layout primitives for structure.
 - Avoid one-off CSS unless it’s truly global (then put it in the theme/global layers).
 
+UX rules of thumb:
+
+- Prefer **progressive disclosure** where possible — use tooltips and hover cards to reveal info without rendering it to screen constantly.
+- Prefer placing **forms inside popovers** with a simple/small trigger indicating what happens — avoid rendering large forms as default visible.
+
 Discover what UI wrappers exist:
 
 - `ls app/src/components/ui`
