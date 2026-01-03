@@ -111,6 +111,7 @@ UX rules of thumb:
 
 - Prefer **progressive disclosure** where possible — use tooltips and hover cards to reveal info without rendering it to screen constantly.
 - Prefer placing **forms inside popovers** with a simple/small trigger indicating what happens — avoid rendering large forms as default visible.
+- Avoid rendering development notes and logs to the UI. Do not "leak" information about the development process to the user.
 
 Discover what UI wrappers exist:
 
