@@ -339,19 +339,26 @@ export function ProjectBoardSplitView(props: { when: boolean; url: UrlState }) {
                           py: "2",
                           rounded: "lg",
                           cursor: "pointer",
-                          transitionProperty: "background-color, box-shadow",
+                          borderWidth: "1px",
+                          borderColor:
+                            isSelected() || isFocused()
+                              ? "border.emphasized"
+                              : "transparent",
+                          transitionProperty:
+                            "background-color, border-color, box-shadow",
                           transitionDuration: "120ms",
-                          bg: isSelected() ? "gray.surface.bg" : "transparent",
-                          _hover: { bg: "gray.subtle.bg" },
+                          bg: isSelected() ? "gray.subtle.bg" : "transparent",
+                          _hover: {
+                            bg: isSelected()
+                              ? "gray.subtle.bg.hover"
+                              : "gray.subtle.bg",
+                            borderColor: "border.emphasized",
+                          },
                           _focusVisible: {
                             outline: "2px solid",
                             outlineColor: "colorPalette.solid",
                             outlineOffset: "2px",
                           },
-                          outline: isFocused() ? "1px solid" : "none",
-                          outlineColor: isFocused()
-                            ? "border.emphasized"
-                            : "transparent",
                         })}
                       >
                         <Stack gap="1" minW="0">
