@@ -172,183 +172,193 @@ export default function HomeRoute() {
                 </Box>
               </Stack>
 
-            <input
-              ref={importEl}
-              type="file"
-              accept="application/json,.json"
-              class={css({ display: "none" })}
-              onChange={(e) => void importFiles(e.currentTarget.files)}
-            />
+              <input
+                ref={importEl}
+                type="file"
+                accept="application/json,.json"
+                class={css({ display: "none" })}
+                onChange={(e) => void importFiles(e.currentTarget.files)}
+              />
 
-            <HStack gap="2" flexWrap="wrap" justify="flex-end">
-              <Button variant="outline" onClick={() => importEl?.click()}>
-                Import JSON
-              </Button>
+              <HStack gap="2" flexWrap="wrap" justify="flex-end">
+                <Button variant="outline" onClick={() => importEl?.click()}>
+                  Import JSON
+                </Button>
 
-              <Popover.Root
-                open={isCreateOpen()}
-                onOpenChange={(details: any) =>
-                  setIsCreateOpen(!!details?.open)
-                }
-              >
-                <Popover.Trigger
-                  asChild={(triggerProps) => (
-                    <Button variant="solid" {...triggerProps}>
-                      <HStack gap="2" alignItems="center">
-                        <PlusIcon />
-                        <Box>New project</Box>
-                      </HStack>
-                    </Button>
-                  )}
-                />
-                <Popover.Positioner>
-                  <Popover.Content
-                    class={css({
-                      width: "min(480px, calc(100vw - 32px))",
-                    })}
-                  >
-                    <Popover.Header>
-                      <Popover.Title>Create project</Popover.Title>
-                      <Popover.Description>
-                        Basic local JSON persistence (no real DB yet).
-                      </Popover.Description>
-                    </Popover.Header>
-
-                    <Popover.Body>
-                      <form onSubmit={onCreate}>
-                        <VStack alignItems="stretch" gap="3">
-                          <label class={css({ display: "grid", gap: "2" })}>
-                            <Box
-                              class={css({ fontSize: "sm", color: "fg.muted" })}
-                            >
-                              Title
-                            </Box>
-                            <Input
-                              ref={titleEl}
-                              placeholder="e.g. Home renovation"
-                            />
-                          </label>
-                          <label class={css({ display: "grid", gap: "2" })}>
-                            <Box
-                              class={css({ fontSize: "sm", color: "fg.muted" })}
-                            >
-                              Description
-                            </Box>
-                            <Textarea
-                              ref={descEl}
-                              placeholder="What is this project for?"
-                              class={css({ minH: "100px" })}
-                            />
-                          </label>
-                          <HStack justify="flex-end" gap="2">
-                            <Popover.CloseTrigger
-                              asChild={(closeProps) => (
-                                <Button variant="outline" {...closeProps}>
-                                  Cancel
-                                </Button>
-                              )}
-                            />
-                            <Button type="submit" variant="solid">
-                              Create
-                            </Button>
-                          </HStack>
-                        </VStack>
-                      </form>
-                    </Popover.Body>
-                  </Popover.Content>
-                </Popover.Positioner>
-              </Popover.Root>
-            </HStack>
-          </HStack>
-
-          <Show
-            when={projects()}
-            fallback={<Box class={css({ color: "fg.muted" })}>Loading…</Box>}
-          >
-            <Show
-              when={(projects() ?? []).length > 0}
-              fallback={
-                <Box class={css({ color: "fg.muted" })}>No projects yet.</Box>
-              }
-            >
-              <VStack
-                alignItems="stretch"
-                gap="0"
-                class={css({
-                  borderTopWidth: "1px",
-                  borderTopColor: "border",
-                })}
-              >
-                <For each={projects() ?? []}>
-                  {(p) => (
-                    <Link
-                      href={`/projects/${p.id}`}
+                <Popover.Root
+                  open={isCreateOpen()}
+                  onOpenChange={(details: any) =>
+                    setIsCreateOpen(!!details?.open)
+                  }
+                >
+                  <Popover.Trigger
+                    asChild={(triggerProps) => (
+                      <Button variant="solid" {...triggerProps}>
+                        <HStack gap="2" alignItems="center">
+                          <PlusIcon />
+                          <Box>New project</Box>
+                        </HStack>
+                      </Button>
+                    )}
+                  />
+                  <Popover.Positioner>
+                    <Popover.Content
                       class={css({
-                        display: "block",
-                        textDecoration: "none",
-                        color: "inherit",
-                        px: "2",
-                        py: "3",
-                        borderBottomWidth: "1px",
-                        borderBottomColor: "border",
-                        _hover: { bg: "bg.muted" },
-                        _focusVisible: {
-                          outline: "2px solid",
-                          outlineColor: "colorPalette.solid",
-                          outlineOffset: "2px",
-                        },
+                        width: "min(480px, calc(100vw - 32px))",
                       })}
                     >
-                      <Stack gap="1">
-                        <HStack
-                          justify="space-between"
-                          gap="4"
-                          alignItems="flex-start"
-                        >
-                          <Box
-                            class={css({
-                              fontWeight: "semibold",
-                              minW: 0,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            })}
-                          >
-                            {p.title}
-                          </Box>
-                          <Box
-                            class={css({
-                              fontSize: "xs",
-                              color: "fg.muted",
-                              whiteSpace: "nowrap",
-                            })}
-                          >
-                            Updated {new Date(p.updatedAt).toLocaleDateString()}
-                          </Box>
-                        </HStack>
+                      <Popover.Header>
+                        <Popover.Title>Create project</Popover.Title>
+                        <Popover.Description>
+                          Basic local JSON persistence (no real DB yet).
+                        </Popover.Description>
+                      </Popover.Header>
 
-                        <Show when={p.description?.trim()}>
-                          <Box
-                            class={css({
-                              fontSize: "sm",
-                              color: "fg.muted",
-                            })}
-                          >
-                            {p.description}
-                          </Box>
-                        </Show>
+                      <Popover.Body>
+                        <form onSubmit={onCreate}>
+                          <VStack alignItems="stretch" gap="3">
+                            <label class={css({ display: "grid", gap: "2" })}>
+                              <Box
+                                class={css({
+                                  fontSize: "sm",
+                                  color: "fg.muted",
+                                })}
+                              >
+                                Title
+                              </Box>
+                              <Input
+                                ref={titleEl}
+                                placeholder="e.g. Home renovation"
+                              />
+                            </label>
+                            <label class={css({ display: "grid", gap: "2" })}>
+                              <Box
+                                class={css({
+                                  fontSize: "sm",
+                                  color: "fg.muted",
+                                })}
+                              >
+                                Description
+                              </Box>
+                              <Textarea
+                                ref={descEl}
+                                placeholder="What is this project for?"
+                                class={css({ minH: "100px" })}
+                              />
+                            </label>
+                            <HStack justify="flex-end" gap="2">
+                              <Popover.CloseTrigger
+                                asChild={(closeProps) => (
+                                  <Button variant="outline" {...closeProps}>
+                                    Cancel
+                                  </Button>
+                                )}
+                              />
+                              <Button type="submit" variant="solid">
+                                Create
+                              </Button>
+                            </HStack>
+                          </VStack>
+                        </form>
+                      </Popover.Body>
+                    </Popover.Content>
+                  </Popover.Positioner>
+                </Popover.Root>
+              </HStack>
+            </HStack>
 
-                        <Box class={css({ fontSize: "sm", color: "fg.muted" })}>
-                          {p.listCount} {p.listCount === 1 ? "list" : "lists"} •{" "}
-                          {p.itemCount} {p.itemCount === 1 ? "item" : "items"}
-                        </Box>
-                      </Stack>
-                    </Link>
-                  )}
-                </For>
-              </VStack>
+            <Show
+              when={projects()}
+              fallback={<Box class={css({ color: "fg.muted" })}>Loading…</Box>}
+            >
+              <Show
+                when={(projects() ?? []).length > 0}
+                fallback={
+                  <Box class={css({ color: "fg.muted" })}>No projects yet.</Box>
+                }
+              >
+                <VStack
+                  alignItems="stretch"
+                  gap="0"
+                  class={css({
+                    borderTopWidth: "1px",
+                    borderTopColor: "border",
+                  })}
+                >
+                  <For each={projects() ?? []}>
+                    {(p) => (
+                      <Link
+                        href={`/projects/${p.id}`}
+                        class={css({
+                          display: "block",
+                          textDecoration: "none",
+                          color: "inherit",
+                          px: "2",
+                          py: "3",
+                          borderBottomWidth: "1px",
+                          borderBottomColor: "border",
+                          _hover: { bg: "bg.muted" },
+                          _focusVisible: {
+                            outline: "2px solid",
+                            outlineColor: "colorPalette.solid",
+                            outlineOffset: "2px",
+                          },
+                        })}
+                      >
+                        <Stack gap="1">
+                          <HStack
+                            justify="space-between"
+                            gap="4"
+                            alignItems="flex-start"
+                          >
+                            <Box
+                              class={css({
+                                fontWeight: "semibold",
+                                minW: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              })}
+                            >
+                              {p.title}
+                            </Box>
+                            <Box
+                              class={css({
+                                fontSize: "xs",
+                                color: "fg.muted",
+                                whiteSpace: "nowrap",
+                              })}
+                            >
+                              Updated{" "}
+                              {new Date(p.updatedAt).toLocaleDateString()}
+                            </Box>
+                          </HStack>
+
+                          <Show when={p.description?.trim()}>
+                            <Box
+                              class={css({
+                                fontSize: "sm",
+                                color: "fg.muted",
+                              })}
+                            >
+                              {p.description}
+                            </Box>
+                          </Show>
+
+                          <Box
+                            class={css({ fontSize: "sm", color: "fg.muted" })}
+                          >
+                            {p.listCount} {p.listCount === 1 ? "list" : "lists"}{" "}
+                            • {p.itemCount}{" "}
+                            {p.itemCount === 1 ? "item" : "items"}
+                          </Box>
+                        </Stack>
+                      </Link>
+                    )}
+                  </For>
+                </VStack>
+              </Show>
             </Show>
-          </Show>
           </VStack>
         </Container>
       </Box>

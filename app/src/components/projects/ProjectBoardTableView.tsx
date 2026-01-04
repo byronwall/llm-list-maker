@@ -1,7 +1,13 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { css } from "styled-system/css";
 import { Box, HStack, Stack, VStack } from "styled-system/jsx";
-import { ChevronDownIcon, ChevronRightIcon, DownloadIcon, Trash2Icon, XIcon } from "lucide-solid";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  DownloadIcon,
+  Trash2Icon,
+  XIcon,
+} from "lucide-solid";
 
 import * as Table from "~/components/ui/table";
 import * as Checkbox from "~/components/ui/checkbox";
@@ -9,13 +15,21 @@ import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { Input } from "~/components/ui/input";
 import { useProjectBoard } from "./project-board-context";
-import type { createProjectBoardUrlState, ProjectBoardListSort, SortDir } from "./project-board-url-state";
+import type {
+  createProjectBoardUrlState,
+  ProjectBoardListSort,
+  SortDir,
+} from "./project-board-url-state";
 import { createListIndexEntries } from "./project-board-list-model";
 import { ProjectBoardListMenu } from "./ProjectBoardListMenu";
 import { ProjectBoardQuickAddItem } from "./ProjectBoardQuickAddItem";
 import { ProjectBoardItemRow } from "./ProjectBoardItemRow";
 import { ProjectBoardAddItem } from "./ProjectBoardAddItem";
-import { downloadTextFile, sanitizeFilename, singleListToMarkdown } from "~/lib/projects/export";
+import {
+  downloadTextFile,
+  sanitizeFilename,
+  singleListToMarkdown,
+} from "~/lib/projects/export";
 
 type UrlState = ReturnType<typeof createProjectBoardUrlState>;
 
@@ -108,7 +122,9 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
       chunks.push("\n---\n");
     }
 
-    const safeProject = sanitizeFilename(board.project.title || board.project.id);
+    const safeProject = sanitizeFilename(
+      board.project.title || board.project.id
+    );
     downloadTextFile({
       filename: `${safeProject}-lists.md`,
       text: chunks.join("").trimEnd() + "\n",
@@ -119,7 +135,11 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
   const deleteSelected = async () => {
     const keys = Array.from(selected());
     if (keys.length === 0) return;
-    if (!confirm(`Delete ${keys.length} selected list(s)? Items will move to Loose.`))
+    if (
+      !confirm(
+        `Delete ${keys.length} selected list(s)? Items will move to Loose.`
+      )
+    )
       return;
     setIsBulkDeleting(true);
     try {
@@ -203,7 +223,9 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
         >
           <Box
             class={css({
-              maxH: "calc(100dvh - 280px)",
+              // Let the table use most of the viewport height (on its own),
+              // while still keeping the table body as the scroll container.
+              maxH: "min(90vh, 90dvh)",
               overflow: "auto",
             })}
           >
@@ -221,7 +243,9 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
                   >
                     <Checkbox.Root
                       checked={
-                        (isIndeterminate() ? "indeterminate" : allChecked()) as Checkbox.CheckedState
+                        (isIndeterminate()
+                          ? "indeterminate"
+                          : allChecked()) as Checkbox.CheckedState
                       }
                       onCheckedChange={() => toggleAllVisible()}
                     >
@@ -299,7 +323,9 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
                       width: "72px",
                     })}
                   >
-                    <Box class={css({ fontSize: "sm", color: "fg.muted" })}>Actions</Box>
+                    <Box class={css({ fontSize: "sm", color: "fg.muted" })}>
+                      Actions
+                    </Box>
                   </Table.Header>
                 </Table.Row>
               </Table.Head>
@@ -310,7 +336,8 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
                     const isExpanded = () => props.url.expanded().has(e.key);
                     const items = () => pb.itemsByListId().get(e.key) ?? [];
                     const isLoose = () => e.key === "LOOSE";
-                    const isEditing = () => pb.editingListId() === e.listId && e.listId != null;
+                    const isEditing = () =>
+                      pb.editingListId() === e.listId && e.listId != null;
 
                     const startRename = () => {
                       if (!e.list) return;
@@ -336,7 +363,9 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
                               checked={selected().has(e.key)}
                               onCheckedChange={() => toggleOne(e.key)}
                             >
-                              <Checkbox.Control aria-label={`Select ${e.title || "list"}`}>
+                              <Checkbox.Control
+                                aria-label={`Select ${e.title || "list"}`}
+                              >
                                 <Checkbox.Indicator />
                               </Checkbox.Control>
                               <Checkbox.HiddenInput />
@@ -346,10 +375,16 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
                             <IconButton
                               size="xs"
                               variant="plain"
-                              aria-label={isExpanded() ? "Collapse row" : "Expand row"}
+                              aria-label={
+                                isExpanded() ? "Collapse row" : "Expand row"
+                              }
                               onClick={() => props.url.toggleExpanded(e.key)}
                             >
-                              {isExpanded() ? <ChevronDownIcon /> : <ChevronRightIcon />}
+                              {isExpanded() ? (
+                                <ChevronDownIcon />
+                              ) : (
+                                <ChevronRightIcon />
+                              )}
                             </IconButton>
                           </Table.Cell>
                           <Table.Cell onDblClick={startRename}>
@@ -377,12 +412,16 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
                             </Show>
                           </Table.Cell>
                           <Table.Cell>
-                            <Box class={css({ fontSize: "sm", color: "fg.muted" })}>
+                            <Box
+                              class={css({ fontSize: "sm", color: "fg.muted" })}
+                            >
                               {e.itemCount}
                             </Box>
                           </Table.Cell>
                           <Table.Cell>
-                            <Box class={css({ fontSize: "sm", color: "fg.muted" })}>
+                            <Box
+                              class={css({ fontSize: "sm", color: "fg.muted" })}
+                            >
                               {new Date(e.updatedAt).toLocaleString()}
                             </Box>
                           </Table.Cell>
@@ -414,15 +453,28 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
                                   p: "3",
                                 })}
                               >
-                                <HStack justify="space-between" gap="3" flexWrap="wrap">
+                                <HStack
+                                  justify="space-between"
+                                  gap="3"
+                                  flexWrap="wrap"
+                                >
                                   <Stack gap="1" minW="0">
                                     <Show when={(e.description ?? "").trim()}>
-                                      <Box class={css({ fontSize: "sm", color: "fg.muted" })}>
+                                      <Box
+                                        class={css({
+                                          fontSize: "sm",
+                                          color: "fg.muted",
+                                        })}
+                                      >
                                         {e.description}
                                       </Box>
                                     </Show>
                                   </Stack>
-                                  <HStack gap="2" flexWrap="wrap" justify="flex-end">
+                                  <HStack
+                                    gap="2"
+                                    flexWrap="wrap"
+                                    justify="flex-end"
+                                  >
                                     <ProjectBoardQuickAddItem
                                       listId={isLoose() ? null : e.key}
                                       size="sm"
@@ -430,7 +482,9 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      onClick={() => props.url.openSplitFor(e.key)}
+                                      onClick={() =>
+                                        props.url.openSplitFor(e.key)
+                                      }
                                     >
                                       Open
                                     </Button>
@@ -451,15 +505,26 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
                                     const dragged = pb.draggingItemId();
                                     if (!dragged) return;
                                     const destListId = isLoose() ? null : e.key;
-                                    const destItems = items().filter((x) => x.id !== dragged);
+                                    const destItems = items().filter(
+                                      (x) => x.id !== dragged
+                                    );
                                     pb.setDragOverColumnId(null);
-                                    await pb.moveItemByDnD(dragged, destListId, destItems.length);
+                                    await pb.moveItemByDnD(
+                                      dragged,
+                                      destListId,
+                                      destItems.length
+                                    );
                                   }}
                                 >
                                   <Show
                                     when={items().length > 0}
                                     fallback={
-                                      <Box class={css({ color: "fg.muted", fontSize: "sm" })}>
+                                      <Box
+                                        class={css({
+                                          color: "fg.muted",
+                                          fontSize: "sm",
+                                        })}
+                                      >
                                         No items.
                                       </Box>
                                     }
@@ -475,7 +540,9 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
                                     </For>
                                   </Show>
 
-                                  <ProjectBoardAddItem listId={isLoose() ? null : e.key} />
+                                  <ProjectBoardAddItem
+                                    listId={isLoose() ? null : e.key}
+                                  />
                                 </VStack>
                               </VStack>
                             </Table.Cell>
@@ -493,5 +560,3 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
     </Show>
   );
 }
-
-
