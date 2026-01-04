@@ -9,7 +9,9 @@ export function sanitizeFilename(raw: string) {
   return safe || "export";
 }
 
-export function formatItemMarkdownLine(item: Pick<Item, "label" | "description">) {
+export function formatItemMarkdownLine(
+  item: Pick<Item, "label" | "description">
+) {
   const title = String(item.label ?? "").trim();
   const desc = String(item.description ?? "").trim();
   return `${title} -- ${desc}`.trimEnd();
@@ -63,7 +65,9 @@ export function projectBoardToMarkdown(board: ProjectBoard) {
 
   const loose = itemsByListId.get(null) ?? [];
   if (loose.length > 0) {
-    lines.push(listToMarkdown({ title: "Loose", description: "", items: loose }));
+    lines.push(
+      listToMarkdown({ title: "Loose", description: "", items: loose })
+    );
   }
 
   for (const list of lists) {
@@ -114,6 +118,3 @@ export async function copyTextToClipboard(text: string) {
   document.execCommand("copy");
   document.body.removeChild(ta);
 }
-
-
-

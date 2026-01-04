@@ -10,6 +10,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^1.0.0",
     "@ark-ui/solid": "^5.30.0",
+    "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.1",
     "@solidjs/start": "^1.1.0",
     "ai": "^4.0.0",

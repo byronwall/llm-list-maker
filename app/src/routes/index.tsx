@@ -1,4 +1,5 @@
 import { createAsync, useAction } from "@solidjs/router";
+import { Meta, Title } from "@solidjs/meta";
 import { createEffect, createSignal, For, Show } from "solid-js";
 import { css } from "styled-system/css";
 import { Box, Container, HStack, Stack, VStack } from "styled-system/jsx";
@@ -12,6 +13,7 @@ import * as Popover from "~/components/ui/popover";
 
 import { createProject, importProjectJson } from "~/server/actions";
 import { listProjectSummaries } from "~/server/queries";
+import { formatPageTitle, SITE_DESCRIPTION } from "~/lib/site-meta";
 
 export default function HomeRoute() {
   const projects = createAsync(() => listProjectSummaries());
@@ -74,94 +76,101 @@ export default function HomeRoute() {
   };
 
   return (
-    <Box
-      class={css({
-        minH: "dvh",
-        bg: isDraggingImport() ? "bg.muted" : "transparent",
-        transition: "background-color 120ms ease",
-      })}
-      onDragEnter={(e) => {
-        if (!isFileDrag(e.dataTransfer)) return;
-        e.preventDefault();
-        dragDepth += 1;
-        setDraggingJsonHint(hasJsonDragHint(e.dataTransfer));
-        setIsDraggingImport(true);
-      }}
-      onDragOver={(e) => {
-        if (!isFileDrag(e.dataTransfer)) return;
-        e.preventDefault();
-        e.dataTransfer!.dropEffect = "copy";
-        setDraggingJsonHint(hasJsonDragHint(e.dataTransfer));
-        setIsDraggingImport(true);
-      }}
-      onDragLeave={(e) => {
-        if (!isDraggingImport()) return;
-        e.preventDefault();
-        dragDepth = Math.max(0, dragDepth - 1);
-        if (dragDepth === 0) {
+    <>
+      <Title>{formatPageTitle("Projects")}</Title>
+      <Meta name="description" content={SITE_DESCRIPTION} />
+      <Meta property="og:title" content={formatPageTitle("Projects")} />
+      <Meta property="og:description" content={SITE_DESCRIPTION} />
+      <Meta property="twitter:card" content="summary" />
+
+      <Box
+        class={css({
+          minH: "dvh",
+          bg: isDraggingImport() ? "bg.muted" : "transparent",
+          transition: "background-color 120ms ease",
+        })}
+        onDragEnter={(e) => {
+          if (!isFileDrag(e.dataTransfer)) return;
+          e.preventDefault();
+          dragDepth += 1;
+          setDraggingJsonHint(hasJsonDragHint(e.dataTransfer));
+          setIsDraggingImport(true);
+        }}
+        onDragOver={(e) => {
+          if (!isFileDrag(e.dataTransfer)) return;
+          e.preventDefault();
+          e.dataTransfer!.dropEffect = "copy";
+          setDraggingJsonHint(hasJsonDragHint(e.dataTransfer));
+          setIsDraggingImport(true);
+        }}
+        onDragLeave={(e) => {
+          if (!isDraggingImport()) return;
+          e.preventDefault();
+          dragDepth = Math.max(0, dragDepth - 1);
+          if (dragDepth === 0) {
+            setIsDraggingImport(false);
+            setDraggingJsonHint(false);
+          }
+        }}
+        onDrop={(e) => {
+          if (!isFileDrag(e.dataTransfer) && !isDraggingImport()) return;
+          e.preventDefault();
+          dragDepth = 0;
           setIsDraggingImport(false);
           setDraggingJsonHint(false);
-        }
-      }}
-      onDrop={(e) => {
-        if (!isFileDrag(e.dataTransfer) && !isDraggingImport()) return;
-        e.preventDefault();
-        dragDepth = 0;
-        setIsDraggingImport(false);
-        setDraggingJsonHint(false);
-        void importFiles(e.dataTransfer?.files);
-      }}
-    >
-      <Show when={isDraggingImport()}>
-        <Box
-          class={css({
-            position: "fixed",
-            inset: 0,
-            display: "grid",
-            placeItems: "center",
-            pointerEvents: "none",
-            zIndex: "overlay",
-          })}
-        >
+          void importFiles(e.dataTransfer?.files);
+        }}
+      >
+        <Show when={isDraggingImport()}>
           <Box
             class={css({
-              bg: "bg.default",
-              borderWidth: "1px",
-              borderColor: "border",
-              borderRadius: "xl",
-              boxShadow: "lg",
-              px: "5",
-              py: "4",
-              maxW: "min(560px, calc(100vw - 32px))",
-              textAlign: "center",
+              position: "fixed",
+              inset: 0,
+              display: "grid",
+              placeItems: "center",
+              pointerEvents: "none",
+              zIndex: "overlay",
             })}
           >
-            <Stack gap="1">
-              <Box class={css({ fontWeight: "semibold", fontSize: "lg" })}>
-                Drop to import a project JSON
-              </Box>
-              <Box class={css({ fontSize: "sm", color: "fg.muted" })}>
-                {draggingJsonHint()
-                  ? "We’ll import it and open the project."
-                  : "Drop a .json file (project export or legacy db)."}
-              </Box>
-            </Stack>
+            <Box
+              class={css({
+                bg: "bg.default",
+                borderWidth: "1px",
+                borderColor: "border",
+                borderRadius: "xl",
+                boxShadow: "lg",
+                px: "5",
+                py: "4",
+                maxW: "min(560px, calc(100vw - 32px))",
+                textAlign: "center",
+              })}
+            >
+              <Stack gap="1">
+                <Box class={css({ fontWeight: "semibold", fontSize: "lg" })}>
+                  Drop to import a project JSON
+                </Box>
+                <Box class={css({ fontSize: "sm", color: "fg.muted" })}>
+                  {draggingJsonHint()
+                    ? "We’ll import it and open the project."
+                    : "Drop a .json file (project export or legacy db)."}
+                </Box>
+              </Stack>
+            </Box>
           </Box>
-        </Box>
-      </Show>
+        </Show>
 
-      <Container py="10" maxW="4xl">
-        <VStack alignItems="stretch" gap="8">
-          <HStack justify="space-between" gap="6" alignItems="flex-start">
-            <Stack gap="2">
-              <Box class={css({ fontSize: "2xl", fontWeight: "semibold" })}>
-                Project Lists
-              </Box>
-              <Box class={css({ color: "fg.muted" })}>
-                Create a project and organize items across lists (drag and
-                drop).
-              </Box>
-            </Stack>
+        <Container py="10" maxW="4xl">
+          <VStack alignItems="stretch" gap="8">
+            <HStack justify="space-between" gap="6" alignItems="flex-start">
+              <Stack gap="2">
+                <Box class={css({ fontSize: "2xl", fontWeight: "semibold" })}>
+                  Project Lists
+                </Box>
+                <Box class={css({ color: "fg.muted" })}>
+                  Create a project and organize items across lists (drag and
+                  drop).
+                </Box>
+              </Stack>
 
             <input
               ref={importEl}
@@ -340,8 +349,9 @@ export default function HomeRoute() {
               </VStack>
             </Show>
           </Show>
-        </VStack>
-      </Container>
-    </Box>
+          </VStack>
+        </Container>
+      </Box>
+    </>
   );
 }
