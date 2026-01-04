@@ -153,8 +153,10 @@ export function ProjectBoardSplitView(props: { when: boolean; url: UrlState }) {
         fallback={
           <Box
             class={css({
-              height: "min(760px, calc(100dvh - 260px))",
-              minH: "560px",
+              // Keep the split view from turning the page body into the primary scroll container.
+              // The panes should scroll instead.
+              height: "min(90vh, 90dvh)",
+              maxH: "min(90vh, 90dvh)",
               width: "100%",
               rounded: "lg",
               borderWidth: "1px",
@@ -190,8 +192,8 @@ export function ProjectBoardSplitView(props: { when: boolean; url: UrlState }) {
           }}
           class={css({
             // Give panels a real height so their internal areas can scroll.
-            height: "min(760px, calc(100dvh - 260px))",
-            minH: "560px",
+            height: "min(90vh, 90dvh)",
+            maxH: "min(90vh, 90dvh)",
             width: "100%",
             gap: "2",
             alignItems: "stretch",
@@ -296,6 +298,7 @@ export function ProjectBoardSplitView(props: { when: boolean; url: UrlState }) {
               class={css({
                 flex: "1",
                 overflow: "auto",
+                overscrollBehaviorY: "contain",
                 px: "2",
                 py: "2",
                 outline: "none",
@@ -437,7 +440,13 @@ export function ProjectBoardSplitView(props: { when: boolean; url: UrlState }) {
               }
             >
               {/* Sticky header + scrollable body */}
-              <Box class={css({ flex: "1", overflow: "auto" })}>
+              <Box
+                class={css({
+                  flex: "1",
+                  overflow: "auto",
+                  overscrollBehaviorY: "contain",
+                })}
+              >
                 <Box
                   class={css({
                     position: "sticky",

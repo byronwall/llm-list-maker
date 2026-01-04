@@ -126,7 +126,7 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
       for (const k of keys) {
         await pb.deleteList(k);
       }
-      setSelected(new Set());
+      setSelected(new Set<string>());
     } finally {
       setIsBulkDeleting(false);
     }
@@ -181,7 +181,7 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => setSelected(new Set())}
+                onClick={() => setSelected(new Set<string>())}
               >
                 <HStack gap="2" alignItems="center">
                   <XIcon />
@@ -208,14 +208,21 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
             })}
           >
             <Table.Root>
-              <Table.Head>
+              <Table.Head class={css({ bg: "bg.default" })}>
                 <Table.Row>
                   <Table.Header
-                    class={css({ position: "sticky", top: 0, bg: "bg.default", zIndex: 1, width: "40px" })}
+                    class={css({
+                      position: "sticky",
+                      top: 0,
+                      bg: "bg.default",
+                      zIndex: "sticky",
+                      width: "40px",
+                    })}
                   >
                     <Checkbox.Root
-                      checked={allChecked()}
-                      indeterminate={isIndeterminate()}
+                      checked={
+                        (isIndeterminate() ? "indeterminate" : allChecked()) as Checkbox.CheckedState
+                      }
                       onCheckedChange={() => toggleAllVisible()}
                     >
                       <Checkbox.Control aria-label="Select all visible lists">
@@ -224,35 +231,74 @@ export function ProjectBoardTableView(props: { when: boolean; url: UrlState }) {
                       <Checkbox.HiddenInput />
                     </Checkbox.Root>
                   </Table.Header>
-                  <Table.Header class={css({ position: "sticky", top: 0, bg: "bg.default", zIndex: 1, width: "44px" })} />
-                  <Table.Header class={css({ position: "sticky", top: 0, bg: "bg.default", zIndex: 1 })}>
+                  <Table.Header
+                    class={css({
+                      position: "sticky",
+                      top: 0,
+                      bg: "bg.default",
+                      zIndex: "sticky",
+                      width: "44px",
+                    })}
+                  />
+                  <Table.Header
+                    class={css({
+                      position: "sticky",
+                      top: 0,
+                      bg: "bg.default",
+                      zIndex: "sticky",
+                    })}
+                  >
                     <Button
                       size="sm"
-                      variant="ghost"
+                      variant="plain"
                       onClick={() => setSortFromHeader("alpha")}
                     >
                       Name{sortLabel("alpha")}
                     </Button>
                   </Table.Header>
-                  <Table.Header class={css({ position: "sticky", top: 0, bg: "bg.default", zIndex: 1, width: "140px" })}>
+                  <Table.Header
+                    class={css({
+                      position: "sticky",
+                      top: 0,
+                      bg: "bg.default",
+                      zIndex: "sticky",
+                      width: "140px",
+                    })}
+                  >
                     <Button
                       size="sm"
-                      variant="ghost"
+                      variant="plain"
                       onClick={() => setSortFromHeader("items")}
                     >
                       Items{sortLabel("items")}
                     </Button>
                   </Table.Header>
-                  <Table.Header class={css({ position: "sticky", top: 0, bg: "bg.default", zIndex: 1, width: "220px" })}>
+                  <Table.Header
+                    class={css({
+                      position: "sticky",
+                      top: 0,
+                      bg: "bg.default",
+                      zIndex: "sticky",
+                      width: "220px",
+                    })}
+                  >
                     <Button
                       size="sm"
-                      variant="ghost"
+                      variant="plain"
                       onClick={() => setSortFromHeader("updated")}
                     >
                       Updated{sortLabel("updated")}
                     </Button>
                   </Table.Header>
-                  <Table.Header class={css({ position: "sticky", top: 0, bg: "bg.default", zIndex: 1, width: "72px" })}>
+                  <Table.Header
+                    class={css({
+                      position: "sticky",
+                      top: 0,
+                      bg: "bg.default",
+                      zIndex: "sticky",
+                      width: "72px",
+                    })}
+                  >
                     <Box class={css({ fontSize: "sm", color: "fg.muted" })}>Actions</Box>
                   </Table.Header>
                 </Table.Row>

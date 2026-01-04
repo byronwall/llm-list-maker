@@ -58,6 +58,27 @@ export default defineConfig({
 
       semanticTokens: {
         colors: {
+          bg: {
+            default: {
+              value: {
+                _light: "{colors.gray.surface.bg}",
+                _dark: "{colors.gray.surface.bg}",
+              },
+            },
+            muted: {
+              value: {
+                _light: "{colors.gray.surface.bg.hover}",
+                _dark: "{colors.gray.surface.bg.hover}",
+              },
+            },
+            subtle: {
+              value: {
+                _light: "{colors.gray.subtle.bg}",
+                _dark: "{colors.gray.subtle.bg}",
+              },
+            },
+          },
+
           fg: {
             default: {
               value: {
