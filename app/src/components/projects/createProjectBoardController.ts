@@ -15,6 +15,7 @@ import {
   deleteProject,
   deleteItem,
   deleteList,
+  duplicateList,
   moveItem,
   reorderLists,
   updateItem,
@@ -39,6 +40,7 @@ export function createProjectBoardController(
   };
 
   const runCreateList = useAction(createList);
+  const runDuplicateList = useAction(duplicateList);
   const runUpdateList = useAction(updateList);
   const runDeleteList = useAction(deleteList);
   const runReorderLists = useAction(reorderLists);
@@ -142,6 +144,12 @@ export function createProjectBoardController(
     await refresh();
   };
 
+  const duplicateListFn = async (listId: string) => {
+    const res = await runDuplicateList({ projectId: projectId(), listId });
+    await refresh();
+    return res;
+  };
+
   const deleteListFn = async (listId: string) => {
     await runDeleteList({ projectId: projectId(), listId });
     await refresh();
@@ -177,6 +185,23 @@ export function createProjectBoardController(
       description,
     });
     cancelAddItem();
+    await refresh();
+  };
+
+  const createItemDirect = async (args: {
+    listId: string | null;
+    label: string;
+    description?: string;
+  }) => {
+    const label = String(args.label ?? "").trim();
+    const description = String(args.description ?? "").trim();
+    if (!label) return;
+    await runCreateItem({
+      projectId: projectId(),
+      listId: args.listId ?? null,
+      label,
+      description,
+    });
     await refresh();
   };
 
@@ -391,6 +416,7 @@ export function createProjectBoardController(
     lists,
     items,
     createList: createListFn,
+    duplicateList: duplicateListFn,
     deleteList: deleteListFn,
 
     editingListId,
@@ -410,6 +436,7 @@ export function createProjectBoardController(
     openAddItem,
     cancelAddItem,
     createItemFor,
+    createItem: createItemDirect,
 
     editingItemId,
     editingItemLabel,

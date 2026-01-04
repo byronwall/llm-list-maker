@@ -472,6 +472,62 @@ class JsonDb {
     });
   }
 
+  async duplicateList(input: {
+    projectId: string;
+    listId: string;
+  }): Promise<{ list: List; duplicatedItemCount: number }> {
+    return this.mutateProject(input.projectId, (data) => {
+      const project = data.project;
+      const src = data.lists.find((l) => l.id === input.listId);
+      if (!src) throw new Error("List not found");
+
+      const now = nowIso();
+      const existingTitles = new Set(
+        data.lists.map((l) => l.title.trim().toLowerCase())
+      );
+
+      const base = (src.title || "Untitled list").trim();
+      let title = `${base} (copy)`;
+      let n = 2;
+      while (existingTitles.has(title.toLowerCase())) {
+        title = `${base} (copy ${n})`;
+        n += 1;
+      }
+
+      const order = Math.max(-1, ...data.lists.map((l) => l.order)) + 1;
+      const list: List = {
+        id: id(),
+        projectId: input.projectId,
+        title,
+        description: src.description ?? "",
+        order,
+        createdAt: now,
+        updatedAt: now,
+      };
+      data.lists.push(list);
+
+      const srcItems = data.items
+        .filter((it) => it.listId === src.id)
+        .sort((a, b) => a.order - b.order);
+      for (const it of srcItems) {
+        data.items.push({
+          id: id(),
+          projectId: input.projectId,
+          listId: list.id,
+          label: it.label,
+          description: it.description ?? "",
+          order: it.order,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      this.normalizeItemOrders(data, list.id);
+
+      project.updatedAt = nowIso();
+      return { list, duplicatedItemCount: srcItems.length };
+    });
+  }
+
   async updateList(input: {
     projectId: string;
     listId: string;

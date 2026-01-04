@@ -1,4 +1,4 @@
-import { Container, VStack } from "styled-system/jsx";
+import { Container, HStack, VStack } from "styled-system/jsx";
 import { css } from "styled-system/css";
 import { ProjectBoardProvider } from "./project-board-context";
 import { createProjectBoardController } from "./createProjectBoardController";
@@ -6,10 +6,17 @@ import { ProjectBoardHeader } from "./ProjectBoardHeader";
 import { AiHelpDialog } from "./AiHelpDialog";
 import { AiReviewCard } from "./AiReviewCard";
 import { ProjectBoardGrid } from "./ProjectBoardGrid";
+import { createProjectBoardUrlState } from "./project-board-url-state";
+import { ProjectBoardViewToggle } from "./ProjectBoardViewToggle";
+import { ProjectBoardViewControls } from "./ProjectBoardViewControls";
+import { ProjectBoardSplitView } from "./ProjectBoardSplitView";
+import { ProjectBoardOverviewView } from "./ProjectBoardOverviewView";
+import { ProjectBoardTableView } from "./ProjectBoardTableView";
 
 export function ProjectBoardPage(props: { projectId: string }) {
   const projectId = () => props.projectId;
   const controller = createProjectBoardController(projectId);
+  const url = createProjectBoardUrlState(projectId);
 
   const compactCardHeaderClass = css({ p: "4", gap: "1" });
   const compactCardBodyClass = css({ px: "4", pb: "4" });
@@ -19,12 +26,38 @@ export function ProjectBoardPage(props: { projectId: string }) {
       <Container py="8" maxW="6xl">
         <VStack alignItems="stretch" gap="5">
           <ProjectBoardHeader />
+          <HStack
+            gap="3"
+            flexWrap="wrap"
+            alignItems="center"
+            justify="space-between"
+          >
+            <ProjectBoardViewToggle
+              value={url.view()}
+              onChange={(v) => url.setView(v)}
+            />
+            <ProjectBoardViewControls
+              compact
+              q={url.q()}
+              setQ={url.setQ}
+              sort={url.sort()}
+              setSort={url.setSort}
+            />
+          </HStack>
           <AiHelpDialog />
           <AiReviewCard
             compactCardHeaderClass={compactCardHeaderClass}
             compactCardBodyClass={compactCardBodyClass}
           />
-          <ProjectBoardGrid />
+          <VStack alignItems="stretch" gap="4">
+            <ProjectBoardSplitView url={url} when={url.view() === "split"} />
+            <ProjectBoardOverviewView
+              url={url}
+              when={url.view() === "overview"}
+            />
+            <ProjectBoardTableView url={url} when={url.view() === "table"} />
+            <ProjectBoardGrid when={url.view() === "board"} />
+          </VStack>
         </VStack>
       </Container>
     </ProjectBoardProvider>

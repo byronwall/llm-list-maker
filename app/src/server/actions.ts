@@ -33,6 +33,14 @@ export const createList = action(async (input: { projectId: string; title: strin
   return await db().createList(input);
 }, "project:list:create");
 
+export const duplicateList = action(
+  async (input: { projectId: string; listId: string }) => {
+    "use server";
+    return await db().duplicateList(input);
+  },
+  "project:list:duplicate",
+);
+
 export const updateList = action(
   async (input: { projectId: string; listId: string; patch: { title?: string; description?: string } }) => {
     "use server";

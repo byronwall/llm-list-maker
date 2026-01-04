@@ -43,6 +43,32 @@ export function listToMarkdown(args: {
   return lines.join("\n");
 }
 
+export function singleListToMarkdown(args: {
+  title: string;
+  description?: string | null;
+  items: Pick<Item, "label" | "description" | "order">[];
+}) {
+  const lines: string[] = [];
+  lines.push(`# ${args.title || "Untitled list"}`.trimEnd());
+  if ((args.description ?? "").trim()) {
+    lines.push("");
+    lines.push(String(args.description).trim());
+  }
+  lines.push("");
+
+  const items = [...args.items].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (items.length === 0) {
+    lines.push("_No items._");
+  } else {
+    for (const it of items) {
+      lines.push(`- ${formatItemMarkdownLine(it)}`);
+    }
+  }
+
+  lines.push("");
+  return lines.join("\n").trimEnd() + "\n";
+}
+
 export function projectBoardToMarkdown(board: ProjectBoard) {
   const lines: string[] = [];
 

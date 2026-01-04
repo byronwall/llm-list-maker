@@ -11,8 +11,8 @@ import { isLoose } from "~/lib/projects/board-utils";
 import {
   copyTextToClipboard,
   downloadTextFile,
-  formatItemMarkdownLine,
   sanitizeFilename,
+  singleListToMarkdown,
 } from "~/lib/projects/export";
 import {
   useProjectBoard,
@@ -37,28 +37,12 @@ export function ProjectBoardColumn(props: { col: Column }) {
   const listForColumn = () =>
     pb.lists().find((l) => l.id === props.col.listId) ?? null;
 
-  const listMarkdown = () => {
-    const listTitle = props.col.title || "Untitled list";
-    const listDesc = props.col.description || "";
-    const lines: string[] = [];
-    lines.push(`# ${listTitle}`.trimEnd());
-    if (String(listDesc).trim()) {
-      lines.push("");
-      lines.push(String(listDesc).trim());
-    }
-    lines.push("");
-
-    const items = columnItems();
-    if (items.length === 0) {
-      lines.push("_No items._");
-    } else {
-      for (const it of items) {
-        lines.push(`- ${formatItemMarkdownLine(it)}`);
-      }
-    }
-    lines.push("");
-    return lines.join("\n").trimEnd() + "\n";
-  };
+  const listMarkdown = () =>
+    singleListToMarkdown({
+      title: props.col.title,
+      description: props.col.description,
+      items: columnItems(),
+    });
 
   const onDownloadListMarkdown = () => {
     const board = pb.board();

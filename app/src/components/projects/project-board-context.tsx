@@ -41,6 +41,9 @@ export type ProjectBoardController = {
   lists: Accessor<List[]>;
   items: Accessor<Item[]>;
   createList: (args: { title: string; description: string }) => Promise<void>;
+  duplicateList: (
+    listId: string
+  ) => Promise<{ list: List; duplicatedItemCount: number } | undefined>;
   deleteList: (listId: string) => Promise<void>;
 
   // List editing
@@ -62,6 +65,11 @@ export type ProjectBoardController = {
   openAddItem: (listId: string | null) => void;
   cancelAddItem: () => void;
   createItemFor: () => Promise<void>;
+  createItem: (args: {
+    listId: string | null;
+    label: string;
+    description?: string;
+  }) => Promise<void>;
 
   // Item editing
   editingItemId: Accessor<string | null>;
