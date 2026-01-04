@@ -3,6 +3,7 @@ import { action } from "@solidjs/router";
 import { reviewBoard, suggestItems, suggestLists, suggestReorg } from "./ai";
 export { aiHelp } from "./ai-help";
 import { db } from "./db";
+import { resolveIdLikeGitHash } from "./id-match";
 
 export const createProject = action(async (input: { title: string; description: string }) => {
   "use server";
@@ -147,8 +148,10 @@ export const aiReorganizeBoard = action(async (input: { projectId: string }) => 
   "use server";
   const board = await db().getProjectBoard(input.projectId);
 
-  const listByTitle = new Map(board.lists.map((l) => [l.title.toLowerCase(), l] as const));
-  const itemByLabel = new Map(board.items.map((i) => [i.label.toLowerCase(), i] as const));
+  const listById = new Map(board.lists.map((l) => [l.id, l] as const));
+  const itemById = new Map(board.items.map((i) => [i.id, i] as const));
+  const listIds = board.lists.map((l) => l.id);
+  const itemIds = board.items.map((i) => i.id);
   const destCounts = new Map<string, number>();
 
   // Initialize destination counts using current board.
@@ -160,37 +163,53 @@ export const aiReorganizeBoard = action(async (input: { projectId: string }) => 
   const aiResult = await suggestReorg({
     projectTitle: board.project.title,
     projectDescription: board.project.description,
-    lists: board.lists.map((l) => ({ title: l.title, description: l.description })),
+    lists: board.lists.map((l) => ({ id: l.id, title: l.title, description: l.description })),
     items: board.items.map((i) => ({
+      id: i.id,
       label: i.label,
       description: i.description,
-      listTitleOrLoose: i.listId ? board.lists.find((l) => l.id === i.listId)?.title ?? "Loose" : "Loose",
+      listIdOrLoose: i.listId ?? "LOOSE",
     })),
   });
 
-  const moves = (aiResult.object as any).moves as { itemLabel: string; targetListTitleOrLoose: string; rationale?: string }[];
+  const moves = (aiResult.object as any).moves as {
+    itemId: string;
+    targetListIdOrLoose: string;
+    rationale: string;
+  }[];
   const applied = [];
   for (const m of moves) {
-    const itemLabel = String(m?.itemLabel ?? "").trim();
-    const target = String(m?.targetListTitleOrLoose ?? "").trim();
-    if (!itemLabel || !target) continue;
+    const itemId = String(m?.itemId ?? "").trim();
+    const targetIdOrLoose = String(m?.targetListIdOrLoose ?? "").trim();
+    if (!itemId || !targetIdOrLoose) continue;
 
-    const item = itemByLabel.get(itemLabel.toLowerCase());
+    const resolvedItemId = resolveIdLikeGitHash(itemId, itemIds);
+    if (!resolvedItemId) continue;
+    const item = itemById.get(resolvedItemId);
     if (!item) continue;
 
-    const isLoose = target.toLowerCase() === "loose";
-    const list = isLoose ? null : listByTitle.get(target.toLowerCase()) ?? null;
-    const destKey = list?.id ?? "LOOSE";
+    const isLoose = targetIdOrLoose.toUpperCase() === "LOOSE";
+    const resolvedListId = isLoose
+      ? null
+      : resolveIdLikeGitHash(targetIdOrLoose, listIds);
+    const list = isLoose ? null : (resolvedListId ? listById.get(resolvedListId) ?? null : null);
+    if (!isLoose && !list) continue;
+
+    const toListId = list?.id ?? null;
+    // Skip no-ops; otherwise this can create silent reordering within the same container.
+    if ((item.listId ?? null) === toListId) continue;
+
+    const destKey = toListId ?? "LOOSE";
     const toIndex = destCounts.get(destKey) ?? 0;
 
     await db().moveItem({
       projectId: input.projectId,
       itemId: item.id,
-      toListId: list?.id ?? null,
+      toListId,
       toIndex,
     });
     destCounts.set(destKey, toIndex + 1);
-    applied.push({ itemId: item.id, toListId: list?.id ?? null, toIndex, rationale: m?.rationale ?? null });
+    applied.push({ itemId: item.id, toListId, toIndex, rationale: m?.rationale ?? "" });
   }
 
   return { appliedCount: applied.length, applied };

@@ -199,8 +199,14 @@ export async function suggestItemsForList(input: {
 export async function suggestReorg(input: {
   projectTitle: string;
   projectDescription: string;
-  lists: { title: string; description: string }[];
-  items: { label: string; description: string; listTitleOrLoose: string }[];
+  lists: { id: string; title: string; description: string }[];
+  items: {
+    id: string;
+    label: string;
+    description: string;
+    // Either a list id from `lists`, or exactly "LOOSE".
+    listIdOrLoose: string;
+  }[];
   userInput?: string;
 }) {
   requireApiKey();
@@ -209,23 +215,43 @@ export async function suggestReorg(input: {
     moves: z
       .array(
         z.object({
-          itemLabel: z.string().min(1),
-          targetListTitleOrLoose: z.string().min(1),
-          rationale: z.string().min(0).max(240).optional(),
+          itemId: z.string().min(1),
+          // Must be either "LOOSE" or an id from the provided lists.
+          targetListIdOrLoose: z.string().min(1),
+          // NOTE: OpenAI `response_format: json_schema` is strict and does not allow optional properties.
+          // Keep this required, but allow empty string when the model has no explanation.
+          rationale: z.string().min(0).max(240),
         })
       )
-      .min(1)
-      .max(30),
+      .min(0)
+      .max(60),
   });
 
-  const listTitles = input.lists.map((l) => l.title);
+  const listTitleById = new Map(input.lists.map((l) => [l.id, l.title] as const));
+  const listLines = input.lists
+    .map(
+      (l) =>
+        `- [${l.id}] ${normalizeTitle(l.title)}${
+          normalizeTitle(l.description) ? ` — ${normalizeTitle(l.description)}` : ""
+        }`
+    )
+    .join("\n");
   const itemLines = input.items
-    .map((it) => `- ${it.label} (${it.listTitleOrLoose})`)
+    .map((it) => {
+      const currentTitle =
+        it.listIdOrLoose === "LOOSE"
+          ? "Loose"
+          : listTitleById.get(it.listIdOrLoose) ?? "(unknown)";
+      return `- [${it.id}] ${normalizeTitle(it.label)} (current: ${it.listIdOrLoose} / ${normalizeTitle(
+        currentTitle
+      )})`;
+    })
     .join("\n");
   const baseContext = [
     `Project: ${normalizeTitle(input.projectTitle)}`,
     `Description: ${normalizeTitle(input.projectDescription) || "(empty)"}`,
-    `Lists: ${listTitles.join(" | ") || "(none)"}`,
+    "Lists (choose by id):",
+    listLines || "(none)",
     "Items:",
     itemLines || "(none)",
   ].join("\n");
@@ -250,9 +276,12 @@ export async function suggestReorg(input: {
           ].join("\n")
         : "No user instructions were provided. Use the project context only.",
       "",
-      "Reorganize the board by proposing moves of existing items into better lists.",
-      'targetListTitleOrLoose must be either an existing list title, or exactly the word "Loose".',
-      "Only move items that clearly belong elsewhere. Leave items unmoved if unsure.",
+      "Reorganize the board by moving existing items into the best matching list.",
+      'targetListIdOrLoose must be either exactly "LOOSE" or one of the list ids shown above.',
+      'You may use abbreviated ids (e.g. the first 6–8 characters) for itemId and targetListIdOrLoose; the server will resolve them by prefix/substring match (if multiple match, the first match is used). Prefer longer ids to avoid ambiguity.',
+      "Prefer assigning LOOSE items into a specific list when there is a clear best fit.",
+      "If an item does not match any list, keep it in LOOSE.",
+      "If there are no helpful changes, return an empty moves array.",
       "Return JSON only via the provided schema.",
     ].join("\n"),
   });
