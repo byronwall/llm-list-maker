@@ -12,6 +12,7 @@ import { ProjectBoardViewControls } from "./ProjectBoardViewControls";
 import { ProjectBoardSplitView } from "./ProjectBoardSplitView";
 import { ProjectBoardOverviewView } from "./ProjectBoardOverviewView";
 import { ProjectBoardTableView } from "./ProjectBoardTableView";
+import { Show } from "solid-js";
 
 export function ProjectBoardPage(props: { projectId: string }) {
   const projectId = () => props.projectId;
@@ -36,13 +37,15 @@ export function ProjectBoardPage(props: { projectId: string }) {
               value={url.view()}
               onChange={(v) => url.setView(v)}
             />
-            <ProjectBoardViewControls
-              compact
-              q={url.q()}
-              setQ={url.setQ}
-              sort={url.sort()}
-              setSort={url.setSort}
-            />
+            <Show when={url.view() !== "split"}>
+              <ProjectBoardViewControls
+                compact
+                q={url.q()}
+                setQ={url.setQ}
+                sort={url.sort()}
+                setSort={url.setSort}
+              />
+            </Show>
           </HStack>
           <AiHelpDialog />
           <AiReviewCard
@@ -56,12 +59,12 @@ export function ProjectBoardPage(props: { projectId: string }) {
               when={url.view() === "overview"}
             />
             <ProjectBoardTableView url={url} when={url.view() === "table"} />
-            <ProjectBoardGrid when={url.view() === "board"} />
+            <Show when={url.view() === "board"}>
+              <ProjectBoardGrid />
+            </Show>
           </VStack>
         </VStack>
       </Container>
     </ProjectBoardProvider>
   );
 }
-
-

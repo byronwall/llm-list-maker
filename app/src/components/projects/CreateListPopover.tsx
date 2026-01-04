@@ -1,14 +1,15 @@
 import * as Popover from "~/components/ui/popover";
 import { Button } from "~/components/ui/button";
+import { IconButton } from "~/components/ui/icon-button";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { Box, HStack, VStack } from "styled-system/jsx";
 import { css } from "styled-system/css";
 import { PlusIcon } from "lucide-solid";
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, type Component } from "solid-js";
 import { useProjectBoard } from "./project-board-context";
 
-export function CreateListPopover() {
+export const CreateListPopover: Component<{ iconOnly?: boolean }> = (props) => {
   const pb = useProjectBoard();
 
   // New list form
@@ -40,12 +41,24 @@ export function CreateListPopover() {
     >
       <Popover.Trigger
         asChild={(triggerProps) => (
-          <Button size="sm" variant="outline" {...triggerProps}>
-            <HStack gap="2" alignItems="center">
+          props.iconOnly ? (
+            <IconButton
+              size="sm"
+              variant="outline"
+              aria-label="Add list"
+              title="Add list"
+              {...triggerProps}
+            >
               <PlusIcon />
-              <Box>Add list</Box>
-            </HStack>
-          </Button>
+            </IconButton>
+          ) : (
+            <Button size="sm" variant="outline" {...triggerProps}>
+              <HStack gap="2" alignItems="center">
+                <PlusIcon />
+                <Box>Add list</Box>
+              </HStack>
+            </Button>
+          )
         )}
       />
       <Popover.Positioner>
@@ -90,6 +103,6 @@ export function CreateListPopover() {
       </Popover.Positioner>
     </Popover.Root>
   );
-}
+};
 
 

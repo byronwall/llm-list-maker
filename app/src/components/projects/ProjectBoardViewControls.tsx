@@ -4,6 +4,7 @@ import { XIcon } from "lucide-solid";
 import { IconButton } from "~/components/ui/icon-button";
 import { Input } from "~/components/ui/input";
 import * as Select from "~/components/ui/select";
+import { createListCollection } from "@ark-ui/solid/collection";
 
 import type { ProjectBoardListSort } from "./project-board-url-state";
 
@@ -12,6 +13,7 @@ const sortItems = [
   { label: "Alphabetical", value: "alpha" as const },
   { label: "Most items", value: "items" as const },
 ];
+const sortCollection = createListCollection({ items: sortItems });
 
 export function ProjectBoardViewControls(props: {
   q: string;
@@ -22,19 +24,27 @@ export function ProjectBoardViewControls(props: {
 }) {
   const isCompact = () => !!props.compact;
   return (
-    <HStack gap="2" flexWrap="wrap" alignItems="center">
+    <Box
+      class={css({
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) auto",
+        gap: "2",
+        alignItems: "center",
+        width: isCompact() ? "min(560px, 100%)" : "100%",
+      })}
+    >
       <Box
         class={css({
           position: "relative",
-          flex: isCompact() ? "0" : "1",
-          minW: isCompact() ? "220px" : "260px",
-          maxW: isCompact() ? "360px" : "none",
+          minW: 0,
         })}
       >
         <Input
           value={props.q}
           size={isCompact() ? "sm" : undefined}
-          placeholder={isCompact() ? "Search…" : "Search lists (and item text)…"}
+          placeholder={
+            isCompact() ? "Search…" : "Search lists (and item text)…"
+          }
           onInput={(e) => props.setQ(e.currentTarget.value)}
           class={css({ pr: "9" })}
         />
@@ -58,18 +68,24 @@ export function ProjectBoardViewControls(props: {
       </Box>
 
       <Select.Root
-        items={sortItems}
+        collection={sortCollection}
         value={[props.sort]}
         size={isCompact() ? "sm" : "md"}
         onValueChange={(details: Select.ValueChangeDetails<any>) => {
-          const v = String(details.value?.[0] ?? "") as ProjectBoardListSort;
+          const raw =
+            (details as any)?.items?.[0]?.value ??
+            (details as any)?.value?.[0] ??
+            "";
+          const v = String(raw) as ProjectBoardListSort;
           if (!v) return;
           props.setSort(v);
         }}
         positioning={{ sameWidth: true }}
       >
         <Select.Control>
-          <Select.Trigger class={css({ minW: isCompact() ? "170px" : "210px" })}>
+          <Select.Trigger
+            class={css({ minW: isCompact() ? "170px" : "210px" })}
+          >
             <Select.ValueText placeholder="Sort…" />
             <Select.Indicator />
           </Select.Trigger>
@@ -88,8 +104,6 @@ export function ProjectBoardViewControls(props: {
         </Select.Positioner>
         <Select.HiddenSelect />
       </Select.Root>
-    </HStack>
+    </Box>
   );
 }
-
-
