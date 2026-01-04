@@ -68,7 +68,7 @@ export async function suggestLists(input: {
         : "No user instructions were provided. Use the project context only.",
       "",
       "Suggest 3-20 list columns for organizing items in this project.",
-      "Default to 3-7 unless the user explicitly asks for more (e.g. a list per year).",
+      "Default to 3-7 unless the user explicitly asks for more.",
       "Lists should be simple and reusable. Avoid duplicates with existing lists.",
       "Return JSON only via the provided schema.",
     ].join("\n"),
@@ -227,12 +227,16 @@ export async function suggestReorg(input: {
       .max(60),
   });
 
-  const listTitleById = new Map(input.lists.map((l) => [l.id, l.title] as const));
+  const listTitleById = new Map(
+    input.lists.map((l) => [l.id, l.title] as const)
+  );
   const listLines = input.lists
     .map(
       (l) =>
         `- [${l.id}] ${normalizeTitle(l.title)}${
-          normalizeTitle(l.description) ? ` — ${normalizeTitle(l.description)}` : ""
+          normalizeTitle(l.description)
+            ? ` — ${normalizeTitle(l.description)}`
+            : ""
         }`
     )
     .join("\n");
@@ -278,7 +282,7 @@ export async function suggestReorg(input: {
       "",
       "Reorganize the board by moving existing items into the best matching list.",
       'targetListIdOrLoose must be either exactly "LOOSE" or one of the list ids shown above.',
-      'You may use abbreviated ids (e.g. the first 6–8 characters) for itemId and targetListIdOrLoose; the server will resolve them by prefix/substring match (if multiple match, the first match is used). Prefer longer ids to avoid ambiguity.',
+      "You may use abbreviated ids (e.g. the first 6–8 characters) for itemId and targetListIdOrLoose; the server will resolve them by prefix/substring match (if multiple match, the first match is used). Prefer longer ids to avoid ambiguity.",
       "Prefer assigning LOOSE items into a specific list when there is a clear best fit.",
       "If an item does not match any list, keep it in LOOSE.",
       "If there are no helpful changes, return an empty moves array.",
