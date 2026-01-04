@@ -7,9 +7,23 @@ import { Input } from "~/components/ui/input";
 import { Link } from "~/components/ui/link";
 import { Textarea } from "~/components/ui/textarea";
 import * as Dialog from "~/components/ui/dialog";
-import { DownloadIcon, PencilIcon, Trash2Icon, Wand2Icon } from "lucide-solid";
+import * as Menu from "~/components/ui/menu";
+import {
+  CopyIcon,
+  DownloadIcon,
+  FileTextIcon,
+  PencilIcon,
+  Trash2Icon,
+  Wand2Icon,
+} from "lucide-solid";
 import { useProjectBoard } from "./project-board-context";
 import { CreateListPopover } from "./CreateListPopover";
+import {
+  copyTextToClipboard,
+  downloadTextFile,
+  projectBoardToMarkdown,
+  sanitizeFilename,
+} from "~/lib/projects/export";
 
 export function ProjectBoardHeader() {
   const pb = useProjectBoard();
@@ -38,17 +52,32 @@ export function ProjectBoardHeader() {
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
 
-    const safeName = (board.project.title || board.project.id)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "")
-      .slice(0, 80);
+    const safeName = sanitizeFilename(board.project.title || board.project.id);
 
     const a = document.createElement("a");
     a.href = url;
     a.download = `${safeName || board.project.id}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const onDownloadMarkdown = () => {
+    const board = pb.board();
+    if (!board) return;
+    const md = projectBoardToMarkdown(board);
+    const safeProject = sanitizeFilename(board.project.title || board.project.id);
+    downloadTextFile({
+      filename: `${safeProject}.md`,
+      text: md,
+      mime: "text/markdown;charset=utf-8",
+    });
+  };
+
+  const onCopyMarkdown = async () => {
+    const board = pb.board();
+    if (!board) return;
+    const md = projectBoardToMarkdown(board);
+    await copyTextToClipboard(md);
   };
 
   return (
@@ -122,16 +151,53 @@ export function ProjectBoardHeader() {
       </Stack>
 
       <HStack gap="2" flexWrap="wrap" justify="flex-end">
-        <Button
-          variant="outline"
-          onClick={onDownloadJson}
-          disabled={!pb.board()}
-        >
-          <HStack gap="2" alignItems="center">
-            <DownloadIcon />
-            <Box>Download JSON</Box>
-          </HStack>
-        </Button>
+        <Menu.Root>
+          <Menu.Trigger
+            asChild={(triggerProps) => (
+              <Button {...triggerProps} variant="outline" disabled={!pb.board()}>
+                <HStack gap="2" alignItems="center">
+                  <DownloadIcon />
+                  <Box>Export</Box>
+                  <Menu.Indicator />
+                </HStack>
+              </Button>
+            )}
+          />
+          <Menu.Positioner>
+            <Menu.Content>
+              <Menu.Item
+                value="download-json"
+                onSelect={onDownloadJson}
+                disabled={!pb.board()}
+              >
+                <HStack gap="2" alignItems="center">
+                  <DownloadIcon />
+                  <Box>Download JSON</Box>
+                </HStack>
+              </Menu.Item>
+              <Menu.Item
+                value="download-markdown"
+                onSelect={onDownloadMarkdown}
+                disabled={!pb.board()}
+              >
+                <HStack gap="2" alignItems="center">
+                  <FileTextIcon />
+                  <Box>Download Markdown</Box>
+                </HStack>
+              </Menu.Item>
+              <Menu.Item
+                value="copy-markdown"
+                onSelect={() => void onCopyMarkdown()}
+                disabled={!pb.board()}
+              >
+                <HStack gap="2" alignItems="center">
+                  <CopyIcon />
+                  <Box>Copy as Markdown</Box>
+                </HStack>
+              </Menu.Item>
+            </Menu.Content>
+          </Menu.Positioner>
+        </Menu.Root>
         <CreateListPopover />
 
         <Button

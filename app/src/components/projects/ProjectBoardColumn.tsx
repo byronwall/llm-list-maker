@@ -1,12 +1,19 @@
 import { For, Show } from "solid-js";
 import { css } from "styled-system/css";
 import { Box, HStack, VStack } from "styled-system/jsx";
-import { PencilIcon, Trash2Icon } from "lucide-solid";
+import { CopyIcon, FileTextIcon, PencilIcon, Trash2Icon } from "lucide-solid";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
+import * as Menu from "~/components/ui/menu";
 import { isLoose } from "~/lib/projects/board-utils";
+import {
+  copyTextToClipboard,
+  downloadTextFile,
+  formatItemMarkdownLine,
+  sanitizeFilename,
+} from "~/lib/projects/export";
 import {
   useProjectBoard,
   type ProjectBoardController,
@@ -29,6 +36,47 @@ export function ProjectBoardColumn(props: { col: Column }) {
   const columnItems = () => pb.itemsByListId().get(props.col.key) ?? [];
   const listForColumn = () =>
     pb.lists().find((l) => l.id === props.col.listId) ?? null;
+
+  const listMarkdown = () => {
+    const listTitle = props.col.title || "Untitled list";
+    const listDesc = props.col.description || "";
+    const lines: string[] = [];
+    lines.push(`# ${listTitle}`.trimEnd());
+    if (String(listDesc).trim()) {
+      lines.push("");
+      lines.push(String(listDesc).trim());
+    }
+    lines.push("");
+
+    const items = columnItems();
+    if (items.length === 0) {
+      lines.push("_No items._");
+    } else {
+      for (const it of items) {
+        lines.push(`- ${formatItemMarkdownLine(it)}`);
+      }
+    }
+    lines.push("");
+    return lines.join("\n").trimEnd() + "\n";
+  };
+
+  const onDownloadListMarkdown = () => {
+    const board = pb.board();
+    const md = listMarkdown();
+    const safeProject = sanitizeFilename(
+      board?.project.title || board?.project.id || "project"
+    );
+    const safeList = sanitizeFilename(props.col.title || props.col.key);
+    downloadTextFile({
+      filename: `${safeProject}-${safeList}.md`,
+      text: md,
+      mime: "text/markdown;charset=utf-8",
+    });
+  };
+
+  const onCopyListMarkdown = async () => {
+    await copyTextToClipboard(listMarkdown());
+  };
 
   const isColumnDragOver = () => pb.dragOverColumnId() === props.col.key;
   const isListDragOver = () =>
@@ -104,6 +152,37 @@ export function ProjectBoardColumn(props: { col: Column }) {
 
           <Show when={!isLoose(props.col.listId)}>
             <HStack gap="1" class="colActions">
+              <Menu.Root size="sm">
+                <Menu.Trigger
+                  asChild={(triggerProps) => (
+                    <Button {...triggerProps} size="2xs" variant="outline">
+                      Export <Menu.Indicator />
+                    </Button>
+                  )}
+                />
+                <Menu.Positioner>
+                  <Menu.Content>
+                    <Menu.Item
+                      value="download-markdown"
+                      onSelect={onDownloadListMarkdown}
+                    >
+                      <HStack gap="2" alignItems="center">
+                        <FileTextIcon />
+                        <Box>Download Markdown</Box>
+                      </HStack>
+                    </Menu.Item>
+                    <Menu.Item
+                      value="copy-markdown"
+                      onSelect={() => void onCopyListMarkdown()}
+                    >
+                      <HStack gap="2" alignItems="center">
+                        <CopyIcon />
+                        <Box>Copy as Markdown</Box>
+                      </HStack>
+                    </Menu.Item>
+                  </Menu.Content>
+                </Menu.Positioner>
+              </Menu.Root>
               <IconButton
                 size="2xs"
                 variant="plain"
