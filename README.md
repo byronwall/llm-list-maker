@@ -4,11 +4,11 @@ A lightweight, AI-assisted workspace for turning a project idea into a structure
 
 <!-- Screenshot placeholder: Home page -->
 
-![Home page](docs/screenshots/home.png)
+![Home page](docs/home.png)
 
 <!-- Screenshot placeholder: Project detail / board page -->
 
-![Project detail page](docs/screenshots/project-detail.png)
+![](docs/details.png)
 
 ## What this app is for
 
