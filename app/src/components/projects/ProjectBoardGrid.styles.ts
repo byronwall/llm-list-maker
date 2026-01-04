@@ -88,7 +88,8 @@ export const itemRowClass = (isDropTarget: boolean, isDragging: boolean) =>
     pl: "2",
     pr: "10",
     py: "2",
-    bg: "gray.subtle.bg",
+    // Keep item cards low-ink: rely on border/outline/hover affordances instead of a filled surface.
+    bg: "transparent",
     borderWidth: "1px",
     borderColor: isDropTarget ? "border.emphasized" : "transparent",
     outlineWidth: isDropTarget ? "2px" : "0px",
@@ -122,7 +123,7 @@ export const itemRowClass = (isDropTarget: boolean, isDragging: boolean) =>
       transitionDuration: "120ms",
     },
     _hover: {
-      bg: "gray.subtle.bg.hover",
+      bg: "transparent",
       borderColor: isDropTarget ? "border.emphasized" : "border",
       "& .itemActions": { opacity: 1, pointerEvents: "auto" },
       "& .itemHandle": { opacity: 1 },
