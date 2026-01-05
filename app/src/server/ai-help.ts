@@ -1,6 +1,11 @@
 import { action } from "@solidjs/router";
 
-import { suggestItems, suggestLists, suggestReorg } from "./ai";
+import {
+  suggestItems,
+  suggestLists,
+  suggestReorg,
+  suggestItemsAndLists,
+} from "./ai";
 import { db } from "./db";
 import { resolveIdLikeGitHash } from "./id-match";
 
@@ -20,7 +25,100 @@ export const aiHelp = action(
     let createdItemsCount = 0;
     let movedItemsCount = 0;
 
-    // 1) Create lists (optional)
+    // 0) Combined Lists + Items (Preferred "One Shot" Mode)
+    if (input.createLists && input.createItems) {
+      const board = await db().getProjectBoard(input.projectId);
+      const aiResult = await suggestItemsAndLists({
+        projectTitle: board.project.title,
+        projectDescription: board.project.description,
+        existingLists: board.lists.map((l) => ({
+          id: l.id,
+          title: l.title,
+          description: l.description,
+        })),
+        existingItemLabels: board.items.map((i) => i.label),
+        userInput,
+      });
+
+      const raw = aiResult.object as any;
+      const newLists = (raw.newLists ?? []) as {
+        id: string;
+        title: string;
+        description: string;
+      }[];
+      const items = (raw.items ?? []) as {
+        label: string;
+        description: string;
+        listId: string;
+      }[];
+
+      // 1. Create new lists and track their real IDs
+      const tempIdToRealId = new Map<string, string>();
+
+      // Deduplicate new lists by title
+      const existingListTitles = new Set(
+        board.lists.map((l) => l.title.toLowerCase())
+      );
+
+      for (const l of newLists) {
+        const title = String(l.title ?? "").trim();
+        if (!title) continue;
+        if (existingListTitles.has(title.toLowerCase())) continue;
+
+        const created = await db().createList({
+          projectId: input.projectId,
+          title,
+          description: l.description ?? "",
+        });
+        existingListTitles.add(title.toLowerCase());
+        createdListsCount += 1;
+        // Map the temporary ID to the new DB ID
+        if (l.id) {
+          tempIdToRealId.set(l.id, created.id);
+        }
+      }
+
+      // 2. Create items and link them
+      const existingLabels = new Set(
+        board.items.map((i) => i.label.toLowerCase())
+      );
+      const listIds = board.lists.map((l) => l.id); // Valid existing list IDs
+
+      for (const it of items) {
+        const label = String(it.label ?? "").trim();
+        if (!label) continue;
+        if (existingLabels.has(label.toLowerCase())) continue;
+
+        const rawListId = String(it.listId ?? "").trim();
+        let finalListId: string | null = null;
+
+        if (rawListId.toUpperCase() === "LOOSE") {
+          finalListId = null;
+        } else if (tempIdToRealId.has(rawListId)) {
+          // It's a newly created list
+          finalListId = tempIdToRealId.get(rawListId)!;
+        } else {
+          // Try to match an existing list
+          const resolved = resolveIdLikeGitHash(rawListId, listIds);
+          finalListId = resolved ?? null; // If not found, default to LOOSE (null)
+        }
+
+        await db().createItem({
+          projectId: input.projectId,
+          listId: finalListId,
+          label,
+          description: it.description ?? "",
+        });
+        existingLabels.add(label.toLowerCase());
+        createdItemsCount += 1;
+      }
+
+      // Mark as handled so we don't run the individual steps
+      input.createLists = false;
+      input.createItems = false;
+    }
+
+    // 1) Create lists (only if not handled above)
     if (input.createLists) {
       const board = await db().getProjectBoard(input.projectId);
       const aiResult = await suggestLists({

@@ -328,3 +328,97 @@ export async function reviewBoard(input: {
     ].join("\n"),
   });
 }
+
+export async function suggestItemsAndLists(input: {
+  projectTitle: string;
+  projectDescription: string;
+  existingLists: { id: string; title: string; description: string }[];
+  existingItemLabels: string[];
+  userInput?: string;
+}) {
+  requireApiKey();
+
+  const schema = z.object({
+    newLists: z
+      .array(
+        z.object({
+          id: z
+            .string()
+            .min(1)
+            .describe("A temporary ID for this new list (e.g. 'new-1')"),
+          title: z.string().min(2),
+          description: z.string().min(0).max(240),
+        })
+      )
+      .describe(
+        "New lists to create. Minimize creating new lists if existing ones fit."
+      ),
+    items: z
+      .array(
+        z.object({
+          label: z.string().min(2),
+          description: z.string().min(0).max(240),
+          listId: z
+            .string()
+            .min(1)
+            .describe(
+              "The ID of the target list. Can be an existing List ID from the context, a temporary ID from newLists, or 'LOOSE'."
+            ),
+        })
+      )
+      .min(1)
+      .max(30),
+  });
+
+  const listLines = input.existingLists
+    .map(
+      (l) =>
+        `- [${l.id}] ${normalizeTitle(l.title)}${
+          normalizeTitle(l.description)
+            ? ` — ${normalizeTitle(l.description)}`
+            : ""
+        }`
+    )
+    .join("\n");
+
+  const baseContext = [
+    `Project: ${normalizeTitle(input.projectTitle)}`,
+    `Description: ${normalizeTitle(input.projectDescription) || "(empty)"}`,
+    "Existing Lists (choose by id):",
+    listLines || "(none)",
+    `Existing item labels: ${input.existingItemLabels.join(" | ") || "(none)"}`,
+  ].join("\n");
+
+  const user = normalizeTitle(input.userInput);
+
+  return await generateObject({
+    model: getModel(),
+    schema,
+    prompt: [
+      baseContext,
+      "",
+      user
+        ? [
+            "User instructions (highest priority):",
+            '"""',
+            user,
+            '"""',
+            "",
+            "Heavily prioritize the user instructions above.",
+            "If the user provides specific items, turn them into items.",
+            "If the user asks for specific lists, create them in 'newLists'.",
+          ].join("\n")
+        : "No user instructions were provided. Suggestions should be based on the project context.",
+      "",
+      "Suggest items to add to this board and organize them into lists.",
+      "1. You may link items to *existing* lists using their IDs provided above.",
+      "2. You may create *new* lists in 'newLists' if the existing ones are insufficient.",
+      "   - Assign each new list a temporary ID (e.g. 'new-1').",
+      "   - Link items to these new lists using that temporary ID.",
+      "3. Minimize the number of new lists. Use existing lists whenever they fit well.",
+      "4. If an item doesn't fit any list, use listId='LOOSE'.",
+      "Avoid duplicates with existing item labels.",
+      "Return JSON only via the provided schema.",
+    ].join("\n"),
+  });
+}
