@@ -5,6 +5,7 @@ import {
   suggestLists,
   suggestReorg,
   suggestItemsAndLists,
+  suggestCleanup,
 } from "./ai";
 import { db } from "./db";
 import { resolveIdLikeGitHash } from "./id-match";
@@ -16,6 +17,7 @@ export const aiHelp = action(
     createLists: boolean;
     createItems: boolean;
     moveItemsAround: boolean;
+    cleanupContent: boolean;
   }) => {
     "use server";
 
@@ -24,6 +26,7 @@ export const aiHelp = action(
     let createdListsCount = 0;
     let createdItemsCount = 0;
     let movedItemsCount = 0;
+    let cleanedCount = 0;
 
     // 0) Combined Lists + Items (Preferred "One Shot" Mode)
     if (input.createLists && input.createItems) {
@@ -275,7 +278,64 @@ export const aiHelp = action(
       }
     }
 
-    return { createdListsCount, createdItemsCount, movedItemsCount };
+    // 4) Cleanup / Polish Content
+    if (input.cleanupContent) {
+      const board = await db().getProjectBoard(input.projectId);
+
+      const aiResult = await suggestCleanup({
+        projectTitle: board.project.title,
+        projectDescription: board.project.description,
+        lists: board.lists.map((l) => ({
+          id: l.id,
+          title: l.title,
+          description: l.description,
+        })),
+        items: board.items.map((i) => ({
+          id: i.id,
+          label: i.label,
+          description: i.description,
+          listId: i.listId,
+        })),
+        userInput,
+      });
+
+      const res = aiResult.object as any;
+      const listsToUpdate = (res.lists ?? []) as {
+        id: string;
+        title: string;
+        description: string;
+      }[];
+      const itemsToUpdate = (res.items ?? []) as {
+        id: string;
+        label: string;
+        description: string;
+      }[];
+
+      for (const l of listsToUpdate) {
+        await db().updateList({
+          projectId: input.projectId,
+          listId: l.id,
+          patch: { title: l.title, description: l.description },
+        });
+        cleanedCount++;
+      }
+
+      for (const i of itemsToUpdate) {
+        await db().updateItem({
+          projectId: input.projectId,
+          itemId: i.id,
+          patch: { label: i.label, description: i.description },
+        });
+        cleanedCount++;
+      }
+    }
+
+    return {
+      createdListsCount,
+      createdItemsCount,
+      movedItemsCount,
+      cleanedCount,
+    };
   },
   "project:ai:help"
 );

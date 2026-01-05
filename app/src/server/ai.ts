@@ -422,3 +422,86 @@ export async function suggestItemsAndLists(input: {
     ].join("\n"),
   });
 }
+
+export async function suggestCleanup(input: {
+  projectTitle: string;
+  projectDescription: string;
+  lists: { id: string; title: string; description: string }[];
+  items: {
+    id: string;
+    label: string;
+    description: string;
+    listId: string | null;
+  }[];
+  userInput?: string;
+}) {
+  requireApiKey();
+
+  const schema = z.object({
+    lists: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string().min(1),
+        description: z.string(),
+      })
+    ),
+    items: z.array(
+      z.object({
+        id: z.string(),
+        label: z.string().min(1),
+        description: z.string(),
+      })
+    ),
+  });
+
+  const listLines = input.lists
+    .map(
+      (l) =>
+        `- [${l.id}] ${normalizeTitle(l.title)}: ${normalizeTitle(l.description)}`
+    )
+    .join("\n");
+
+  const itemLines = input.items
+    .map(
+      (i) =>
+        `- [${i.id}] ${normalizeTitle(i.label)}: ${normalizeTitle(i.description)} (List: ${i.listId || "LOOSE"})`
+    )
+    .join("\n");
+
+  const baseContext = [
+    `Project: ${normalizeTitle(input.projectTitle)}`,
+    `Description: ${normalizeTitle(input.projectDescription) || "(empty)"}`,
+    "Lists:",
+    listLines || "(none)",
+    "Items:",
+    itemLines || "(none)",
+  ].join("\n");
+
+  const user = normalizeTitle(input.userInput);
+
+  return await generateObject({
+    model: getModel(),
+    schema,
+    prompt: [
+      baseContext,
+      "",
+      user
+        ? ["User instructions (highest priority):", '"""', user, '"""'].join(
+            "\n"
+          )
+        : "No user instructions were provided.",
+      "",
+      "Act as a professional technical writer and editor.",
+      "Review the list titles/descriptions and item labels/descriptions above.",
+      "Your goal: 'Clean up' the content to make it concise, consistent, and easy to read.",
+      "Rules:",
+      "1. Remove redundant prefixes. e.g. If a list is 'Tasks', do not start items with 'Task: ...'.",
+      "2. Fix capitalization and grammar.",
+      "3. Harmonize tone (e.g. make all items imperative actions 'Buy milk' vs 'Buying milk').",
+      "4. Do NOT change the meaning or scope of items/lists.",
+      "5. ONLY return lists/items that have CHANGED. If a list/item needs no changes, omit it from the output.",
+      "6. Return the full object for any changed list/item (including its id, and the new clean title/desc).",
+      "Return JSON only via the provided schema.",
+    ].join("\n"),
+  });
+}

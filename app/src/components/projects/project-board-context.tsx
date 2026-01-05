@@ -31,6 +31,8 @@ export type ProjectBoardController = {
   setAiHelpCreateItems: (v: boolean | ((prev: boolean) => boolean)) => void;
   aiHelpMoveItemsAround: Accessor<boolean>;
   setAiHelpMoveItemsAround: (v: boolean | ((prev: boolean) => boolean)) => void;
+  aiHelpCleanupContent: Accessor<boolean>;
+  setAiHelpCleanupContent: (v: boolean | ((prev: boolean) => boolean)) => void;
   canRunAiHelp: Accessor<boolean>;
   onRunAiHelp: () => Promise<void>;
   onAiReview: () => Promise<void>;

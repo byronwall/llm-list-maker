@@ -70,6 +70,14 @@ export function AiHelpDialog() {
                   >
                     Move items around
                   </Button>
+                  <Button
+                    type="button"
+                    variant={pb.aiHelpCleanupContent() ? "solid" : "outline"}
+                    aria-pressed={pb.aiHelpCleanupContent()}
+                    onClick={() => pb.setAiHelpCleanupContent((v) => !v)}
+                  >
+                    Clean up existing content
+                  </Button>
                 </HStack>
               </VStack>
             </VStack>
@@ -110,5 +118,3 @@ export function AiHelpDialog() {
     </Dialog.Root>
   );
 }
-
-

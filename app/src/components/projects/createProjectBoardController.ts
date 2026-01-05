@@ -255,9 +255,14 @@ export function createProjectBoardController(
   const [aiHelpCreateLists, setAiHelpCreateLists] = createSignal(true);
   const [aiHelpCreateItems, setAiHelpCreateItems] = createSignal(true);
   const [aiHelpMoveItemsAround, setAiHelpMoveItemsAround] = createSignal(false);
+  const [aiHelpCleanupContent, setAiHelpCleanupContent] = createSignal(false);
 
   const canRunAiHelp = createMemo(
-    () => aiHelpCreateLists() || aiHelpCreateItems() || aiHelpMoveItemsAround()
+    () =>
+      aiHelpCreateLists() ||
+      aiHelpCreateItems() ||
+      aiHelpMoveItemsAround() ||
+      aiHelpCleanupContent()
   );
 
   const onRunAiHelp = async () => {
@@ -270,6 +275,7 @@ export function createProjectBoardController(
         createLists: aiHelpCreateLists(),
         createItems: aiHelpCreateItems(),
         moveItemsAround: aiHelpMoveItemsAround(),
+        cleanupContent: aiHelpCleanupContent(),
       });
       setIsAiHelpOpen(false);
       await refresh();
@@ -407,6 +413,8 @@ export function createProjectBoardController(
     setAiHelpCreateItems,
     aiHelpMoveItemsAround,
     setAiHelpMoveItemsAround,
+    aiHelpCleanupContent,
+    setAiHelpCleanupContent,
     canRunAiHelp,
     onRunAiHelp,
     onAiReview,
